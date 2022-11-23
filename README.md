@@ -7,7 +7,7 @@ the transformation is almost surely continuous and differentiable, which allows 
 This software allows for the following four modelling option 
 
 1. VAR HMM
-2. VAR HSMM [$l_1$-ball]
+2. VAR HSMM [ $l_1$-ball]
 3. VAR HSMM (NLP) 
 4. VAR HSMM $l_1$-ball  and NLP
 
