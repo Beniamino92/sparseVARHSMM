@@ -9,7 +9,7 @@ This software allows for the following four modelling option
 1. VAR HMM
 2. VAR HSMM [ $l_1$-ball ]
 3. VAR HSMM [ NLP ]
-4. VAR HSMM [ l_1$-ball  and NLP ]
+4. VAR HSMM [ $l_1$-ball  and NLP ]
 
 In the application of this research, we consider multivariate time series data that arise from a study on human gesture phase segmentation based on sensor data. As a segmentation exercise, We aim to model the data to identify periods of rest and active gesturing. 
 
