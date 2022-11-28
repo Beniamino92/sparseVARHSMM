@@ -13,19 +13,19 @@ This software allows for the following four modelling option
 
 
 ```r
-NBapproxVARHSMM_l1ball_fullCov_stan <- stan_model(file = "stan/NBapproxVARHSMM_l1ball_fullCov_priorLaplace.stan")
-NBapproxVARHSMM_l1ball_fullCov_fit <- sampling(object = NBapproxVARHSMM_sparse_l1ball_fullCov_stan,
-                                               data = NBapproxVARHSMM_l1ball_fullCov_data, seed = 123, 
+NBapproxVARHSMM_stan <- stan_model(file = "stan/NBapproxVARHSMM_l1ball_fullCov_priorLaplace.stan")
+NBapproxVARHSMM_fit <- sampling(object = NBapproxVARHSMM_stan,
+                                               data = NBapproxVARHSMM_data, seed = 123, 
                                                chains = 1, iter = 1000 + N_MCMC, 
                                                warmup = 1000)  
 ```
 
 ```r
-NBapprox_VARHSMM_predictive <- NBapproxVARHSMM_getPredictive(NBapproxVARHSMM_l1ball_fullCov_fit , m, obs, 
+NBapproxVARHSMM_predictive <- NBapproxVARHSMM_getPredictive(NBapproxVARHSMM_fit , m, obs, 
                                                               pseudo = FALSE, 
                                                               L1_ball = TRUE, ndraw = 50)
-z_hat <- NBapprox_VARHSMM_predictive$z_hat
-y_hat <- NBapprox_VARHSMM_predictive$y_hat
+z_hat <- NBapproxVARHSMM_predictive$z_hat
+y_hat <- NBapproxVARHSMM_predictive$y_hat
 plotPosteriorPredictive(obs, y_hat, z_hat, K)
 ```
          
@@ -34,20 +34,27 @@ plotPosteriorPredictive(obs, y_hat, z_hat, K)
 </p>
   
 ```r
- # Rest
-plotDAG(p_est_NBapproxVARHSMM[1, , , 1], ylabels, color = "lightblue1", main = "Rest")
-# Active
-plotDAG(p_est_NBapproxVARHSMM[2, , , 1], ylabels, color = "lightsalmon", main = "Active")
+NBapproxVARHSMM_params <- rstan::extract(NBapproxVARHSMM_fit)
+p_est <- get_inclusion_sims(NBapproxVARHSMM_params, p_est = TRUE)$p_est
+beta_est<- get_beta_est(NBapproxVARHSMM_params, L1_ball = TRUE, mat = TRUE)
 ```
   
+```r
+ # Rest
+plotDAG(p_est[1, , , 1], ylabels, color = "lightblue1", main = "Rest")
+# Active
+plotDAG(p_est[2, , , 1], ylabels, color = "lightsalmon", main = "Active")
+```
   
 <p align="center">
 <img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/DAGactive.png" width="600" heigth="600"/> 
 </p>
   
-  
 ```r
-# something
+ # Rest
+plotDAG(p_est[1, , , 1], ylabels, color = "lightblue1", main = "Rest")
+# Active
+plotDAG(p_est[2, , , 1], ylabels, color = "lightsalmon", main = "Active")
 ```
 
 <p align="center">
