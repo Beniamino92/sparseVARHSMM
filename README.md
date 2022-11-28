@@ -30,8 +30,9 @@ plotPosteriorPredictive(obs, y_hat, z_hat, K)
 ```
          
 <p align="center">
-<img src="https://github.com/Beniamino92/BayesianApproxHSMM/blob/master/figures/example_postpred.png" width="500" heigth="250"/> 
+<img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/postpred_training.pdf" width="500" heigth="250"/> 
 </p>
   
+
 <!-- In the application of this research, we consider multivariate time series data that arise from a study on human gesture phase segmentation based on sensor data. As a segmentation exercise, We aim to model the data to identify periods of rest and active gesturing.  -->
 
