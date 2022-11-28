@@ -51,10 +51,10 @@ plotDAG(p_est[2, , , 1], ylabels, color = "lightsalmon", main = "Active")
 </p>
   
 ```r
- # Rest
-plotDAG(p_est[1, , , 1], ylabels, color = "lightblue1", main = "Rest")
-# Active
-plotDAG(p_est[2, , , 1], ylabels, color = "lightsalmon", main = "Active")
+ # PPI (Rest)
+plot.heat(Matrix = p_est[1, , , 1], Xlab="", Ylab="", Main="PPI (Rest)", limit=c(0,1))
+# VAR coeffs (Active)
+plot.heat(Matrix = beta_est[2, , , 1], Xlab="", Ylab="", Main="VAR coeffs (Active)", limit=c(-1,1))
 ```
 
 <p align="center">
