@@ -46,8 +46,8 @@ plotDAG(p_est_NBapproxVARHSMM[2, , , 1], ylabels, color = "lightsalmon", main = 
 </p>
   
   
-r```
-something
+```r
+# something
 ```
 
 <p align="center">
