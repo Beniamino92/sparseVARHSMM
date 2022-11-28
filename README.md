@@ -40,10 +40,9 @@ plotDAG(p_est_NBapproxVARHSMM[1, , , 1], ylabels, color = "lightblue1", main = "
 plotDAG(p_est_NBapproxVARHSMM[2, , , 1], ylabels, color = "lightsalmon", main = "Active")
 ```
   
-https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/DAGactive.png
   
 <p align="center">
-<img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/DAGactive.png" width="500" heigth="500"/> 
+<img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/DAGactive.png" width="600" heigth="600"/> 
 </p>
   
 
