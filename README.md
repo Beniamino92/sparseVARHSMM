@@ -33,6 +33,12 @@ plotPosteriorPredictive(obs, y_hat, z_hat, K)
 <img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/postpred_training.png" width="900" heigth="250"/> 
 </p>
   
+```r
+ # Rest
+plotDAG(p_est_NBapproxVARHSMM[1, , , 1], ylabels, color = "lightblue1", main = "Rest")
+# Active
+plotDAG(p_est_NBapproxVARHSMM[2, , , 1], ylabels, color = "lightsalmon", main = "Active")
+```
   
 
 <!-- In the application of this research, we consider multivariate time series data that arise from a study on human gesture phase segmentation based on sensor data. As a segmentation exercise, We aim to model the data to identify periods of rest and active gesturing.  -->
