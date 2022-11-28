@@ -15,9 +15,9 @@ This software allows for the following four modelling option
 ```r
 NBapproxVARHSMM_stan <- stan_model(file = "stan/NBapproxVARHSMM_sparse_l1ball_fullCov_NLP.stan")
 NBapproxVARHSMM_fit <- sampling(object = NBapproxVARHSMM_stan,
-                                               data = NBapproxVARHSMM_data, seed = 123, 
-                                               chains = 1, iter = 1000 + N_MCMC, 
-                                               warmup = 1000)  
+                                data = NBapproxVARHSMM_data, seed = 123, 
+                                chains = 1, iter = 1000 + N_MCMC, 
+                                warmup = 1000)  
 ```
 
 ```r
