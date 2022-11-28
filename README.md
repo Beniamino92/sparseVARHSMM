@@ -28,8 +28,9 @@ z_hat <- NBapprox_VARHSMM_predictive$z_hat
 y_hat <- NBapprox_VARHSMM_predictive$y_hat
 plotPosteriorPredictive(obs, y_hat, z_hat, K)
 ```
-         
- 
+<p align="center">         
+<img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/postpred_training.pdf" width="500" heigth="250"/> 
+</p>
 
   
   
