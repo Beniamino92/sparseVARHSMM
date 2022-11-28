@@ -20,5 +20,18 @@ NBapproxVARHSMM_l1ball_fullCov_fit <- sampling(object = NBapproxVARHSMM_sparse_l
                                                warmup = 1000)  
 ```
 
+```r
+NBapprox_VARHSMM_predictive <- NBapproxVARHSMM_getPredictive(NBapproxVARHSMM_l1ball_fullCov_fit , m, obs, 
+                                                              pseudo = FALSE, 
+                                                              L1_ball = TRUE, ndraw = 50)
+z_hat <- NBapprox_VARHSMM_predictive$z_hat
+y_hat <- NBapprox_VARHSMM_predictive$y_hat
+plotPosteriorPredictive(obs, y_hat, z_hat, K)
+```
+         
+ 
+
+  
+  
 <!-- In the application of this research, we consider multivariate time series data that arise from a study on human gesture phase segmentation based on sensor data. As a segmentation exercise, We aim to model the data to identify periods of rest and active gesturing.  -->
 
