@@ -30,7 +30,7 @@ plotPosteriorPredictive(obs, y_hat, z_hat, K)
 ```
          
 <p align="center">
-<img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/postpred_training.png" width="900" heigth="250"/> 
+<img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/postpred_training.png" width="700" heigth="100"/> 
 </p>
   
 ```r
