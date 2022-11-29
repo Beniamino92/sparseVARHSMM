@@ -10,10 +10,11 @@ This software allows for the following four modelling option
 3. VAR HSMM [ NLP ]
 4. VAR HSMM [ $l_1$-ball  and NLP ]
   
-You can find below some representative examples of our software facilities, applied to real sensor data, where we consider an approximate VAR HSMM [ $l_1$-ball  and NLP ] with negative-binomial dwell durations. Different dwell/emission distributions from the ones considered in this software package can be easily developed. Users need only change the corresponding function in our stan files (and R utilities). 
+You can find below some representative examples of the features of our software, applied to real sensor data, where we consider an approximate VAR HSMM [ $l_1$-ball  and NLP ] with negative-binomial dwell durations. Different dwell/emission distributions from the ones considered in this software package can be easily developed. Users need only change the corresponding function in our stan files (and R utilities). 
   
 
 ```r
+# - MCMC sampling  
 NBapproxVARHSMM_stan <- stan_model(file = "stan/NBapproxVARHSMM_sparse_l1ball_fullCov_NLP.stan")
 fit <- sampling(object = NBapproxVARHSMM_stan,
                 data = NBapproxVARHSMM_data, seed = 123, 
@@ -21,8 +22,8 @@ fit <- sampling(object = NBapproxVARHSMM_stan,
                 warmup = 1000)  
 ```
 
-  say about viterbi algorithm. 
 ```r
+# - posterior predictive distribution and most likely state sequence (Viterbi)
 predictive <- NBapproxVARHSMM_getPredictive(fit , m, obs, pseudo = FALSE, 
                                             L1_ball = TRUE, ndraw = 50)
 z_hat <- predictive$z_hat
@@ -35,7 +36,7 @@ plotPosteriorPredictive(obs, y_hat, z_hat, K)
 </p>
   
 ```r
- # state probabilities plots 
+ # - state probabilities plots (local decoding)
  NBapproxVARHSMM_plotStateProbs(fit, obs, m = m, pseudo = FALSE, L1_ball = TRUE)
 ```
   
@@ -45,13 +46,15 @@ plotPosteriorPredictive(obs, y_hat, z_hat, K)
   
   
 ```r
+# - extracting PPI and VAR coefficients 
 params <- rstan::extract(fit)
 p_est <- get_inclusion_sims(params, p_est = TRUE)$p_est
 beta_est <- get_beta_est(params, L1_ball = TRUE, mat = TRUE)
 ```
   
 ```r
- # Rest
+# - Directed Acyclic Graph (DAG) frm PPI            
+# Rest
 plotDAG(p_est[1, , , 1], ylabels, color = "lightblue1", main = "Rest")
 # Active
 plotDAG(p_est[2, , , 1], ylabels, color = "lightsalmon", main = "Active")
