@@ -51,6 +51,17 @@ params <- rstan::extract(fit)
 p_est <- get_inclusion_sims(params, p_est = TRUE)$p_est
 beta_est <- get_beta_est(params, L1_ball = TRUE, mat = TRUE)
 ```
+            
+```r
+ # PPI (Rest)
+plot.heat(Matrix = p_est[1, , , 1], Xlab="", Ylab="", Main="PPI (Rest)", limit=c(0,1))
+# VAR coeffs (Active)
+plot.heat(Matrix = beta_est[2, , , 1], Xlab="", Ylab="", Main="VAR coeffs (Active)", limit=c(-1,1))
+```
+
+<p align="center">
+<img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/inclusion_coeffs_covariance.png" width="600" heigth="600"/> 
+</p>            
   
 ```r
 # - Directed Acyclic Graph (DAG) from PPI            
@@ -64,16 +75,7 @@ plotDAG(p_est[2, , , 1], ylabels, color = "lightsalmon", main = "Active")
 <img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/DAGactive.png" width="600" heigth="600"/> 
 </p>
   
-```r
- # PPI (Rest)
-plot.heat(Matrix = p_est[1, , , 1], Xlab="", Ylab="", Main="PPI (Rest)", limit=c(0,1))
-# VAR coeffs (Active)
-plot.heat(Matrix = beta_est[2, , , 1], Xlab="", Ylab="", Main="VAR coeffs (Active)", limit=c(-1,1))
-```
 
-<p align="center">
-<img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/inclusion_coeffs_covariance.png" width="600" heigth="600"/> 
-</p>
   
 
 <!-- In the application of this research, we consider multivariate time series data that arise from a study on human gesture phase segmentation based on sensor data. As a segmentation exercise, We aim to model the data to identify periods of rest and active gesturing.  -->
