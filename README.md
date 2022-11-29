@@ -33,7 +33,10 @@ plotPosteriorPredictive(obs, y_hat, z_hat, K)
 <img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/postpred_training.png" width="700" heigth="100"/> 
 </p>
   
-ALSO ADD TIME-VARYING POSTERIO PROB AND local decoding. 
+<p align="center">
+<img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/stateprobs_training.png" width="700" heigth="100"/> 
+</p>
+  
   
 ```r
 params <- rstan::extract(fit)
