@@ -53,7 +53,7 @@ beta_est <- get_beta_est(params, L1_ball = TRUE, mat = TRUE)
 ```
   
 ```r
-# - Directed Acyclic Graph (DAG) frm PPI            
+# - Directed Acyclic Graph (DAG) from PPI            
 # Rest
 plotDAG(p_est[1, , , 1], ylabels, color = "lightblue1", main = "Rest")
 # Active
