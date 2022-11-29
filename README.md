@@ -33,6 +33,11 @@ plotPosteriorPredictive(obs, y_hat, z_hat, K)
 <img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/postpred_training.png" width="700" heigth="100"/> 
 </p>
   
+```r
+ # state probabilities plots 
+ NBapproxVARHSMM_plotStateProbs(fit, obs, m = m, pseudo = FALSE, L1_ball = TRUE)
+```
+  
 <p align="center">
 <img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/stateprobs_training.png" width="700" heigth="100"/> 
 </p>
