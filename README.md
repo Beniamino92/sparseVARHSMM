@@ -13,19 +13,19 @@ This software allows for the following four modelling option
 
 
 ```r
-NBapproxVARHSMM_l1ball_fullCov_stan <- stan_model(file = "stan/NBapproxVARHSMM_l1ball_fullCov_priorLaplace.stan")
-NBapproxVARHSMM_l1ball_fullCov_fit <- sampling(object = NBapproxVARHSMM_sparse_l1ball_fullCov_stan,
-                                               data = NBapproxVARHSMM_l1ball_fullCov_data, seed = 123, 
-                                               chains = 1, iter = 1000 + N_MCMC, 
-                                               warmup = 1000)  
+NBapproxVARHSMM_stan <- stan_model(file = "stan/NBapproxVARHSMM_sparse_l1ball_fullCov_NLP.stan")
+fit <- sampling(object = NBapproxVARHSMM_stan,
+                data = NBapproxVARHSMM_data, seed = 123, 
+                chains = 1, iter = 1000 + N_MCMC, 
+                warmup = 1000)  
 ```
 
+  say about viterbi algorithm. 
 ```r
-NBapprox_VARHSMM_predictive <- NBapproxVARHSMM_getPredictive(NBapproxVARHSMM_l1ball_fullCov_fit , m, obs, 
-                                                              pseudo = FALSE, 
-                                                              L1_ball = TRUE, ndraw = 50)
-z_hat <- NBapprox_VARHSMM_predictive$z_hat
-y_hat <- NBapprox_VARHSMM_predictive$y_hat
+predictive <- NBapproxVARHSMM_getPredictive(fit , m, obs, pseudo = FALSE, 
+                                            L1_ball = TRUE, ndraw = 50)
+z_hat <- predictive$z_hat
+y_hat <- predictive$y_hat
 plotPosteriorPredictive(obs, y_hat, z_hat, K)
 ```
          
@@ -33,16 +33,34 @@ plotPosteriorPredictive(obs, y_hat, z_hat, K)
 <img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/postpred_training.png" width="700" heigth="100"/> 
 </p>
   
+ALSO ADD TIME-VARYING POSTERIO PROB AND local decoding. 
+  
 ```r
- # Rest
-plotDAG(p_est_NBapproxVARHSMM[1, , , 1], ylabels, color = "lightblue1", main = "Rest")
-# Active
-plotDAG(p_est_NBapproxVARHSMM[2, , , 1], ylabels, color = "lightsalmon", main = "Active")
+params <- rstan::extract(fit)
+p_est <- get_inclusion_sims(params, p_est = TRUE)$p_est
+beta_est <- get_beta_est(params, L1_ball = TRUE, mat = TRUE)
 ```
   
+```r
+ # Rest
+plotDAG(p_est[1, , , 1], ylabels, color = "lightblue1", main = "Rest")
+# Active
+plotDAG(p_est[2, , , 1], ylabels, color = "lightsalmon", main = "Active")
+```
   
 <p align="center">
 <img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/DAGactive.png" width="600" heigth="600"/> 
+</p>
+  
+```r
+ # PPI (Rest)
+plot.heat(Matrix = p_est[1, , , 1], Xlab="", Ylab="", Main="PPI (Rest)", limit=c(0,1))
+# VAR coeffs (Active)
+plot.heat(Matrix = beta_est[2, , , 1], Xlab="", Ylab="", Main="VAR coeffs (Active)", limit=c(-1,1))
+```
+
+<p align="center">
+<img src="https://github.com/Beniamino92/sparseVARHSMM/blob/main/figures/inclusion_coeffs_covariance.png" width="600" heigth="600"/> 
 </p>
   
 
