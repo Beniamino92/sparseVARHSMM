@@ -10,7 +10,7 @@ This software allows for the following four modelling option
 3. VAR HSMM [ NLP ]
 4. VAR HSMM [ $l_1$-ball  and NLP ]
   
-You can find below some representative example of our software faclities, applied to real sensor data, where we consider negative-binomial dwell durations. Different dwell/emission distributions to the ones considered in this paper can be easily developed. Users need only change the corresponding function in our stan files (and R utilites). 
+You can find below some representative example of our software faclities, applied to real sensor data, where we consider an approximate VAR HSMM [ $l_1$-ball  and NLP ] with negative-binomial dwell durations. Different dwell/emission distributions to the ones considered in this paper can be easily developed. Users need only change the corresponding function in our stan files (and R utilites). 
   
 
 ```r
