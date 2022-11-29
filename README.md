@@ -10,7 +10,8 @@ This software allows for the following four modelling option
 3. VAR HSMM [ NLP ]
 4. VAR HSMM [ $l_1$-ball  and NLP ]
   
-SAY SOMETHIN ABOUT WE INCLUDE CODE FOR NEG BINOM AND GEOM DURATION. DO WE NEED TO SAY SOMETHING ABOUT SPARSE REPRESENTATION?
+You can find below some representative example of our software faclities, applied to real sensor data, where we consider negative-binomial dwell durations. Different dwell/emission distributions to the ones considered in this paper can be easily developed. Users need only change the corresponding function in our stan files (and R utilites). 
+  
 
 ```r
 NBapproxVARHSMM_stan <- stan_model(file = "stan/NBapproxVARHSMM_sparse_l1ball_fullCov_NLP.stan")
