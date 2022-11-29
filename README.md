@@ -10,7 +10,7 @@ This software allows for the following four modelling option
 3. VAR HSMM [ NLP ]
 4. VAR HSMM [ $l_1$-ball  and NLP ]
   
-You can find below some representative examples of the features of our software, applied to real sensor data, where we consider an approximate VAR HSMM [ $l_1$-ball  and NLP ] with negative-binomial dwell durations. Different dwell/emission distributions from the ones considered in this software package can be easily developed. Users need only change the corresponding function in our stan files (and R utilities). 
+A complete tutorial (R markdown) for using our software is contained in ***.rmd. You can find below some representative examples of the software features of our modeling approach, applied to real sensor data, where we consider an approximate VAR HSMM [ $l_1$-ball  and NLP ] with negative-binomial dwell durations. Different dwell/emission distributions from the ones considered in this software package can be easily developed. Users need only change the corresponding function in our stan files (and R utilities). 
   
 
 ```r
@@ -24,7 +24,7 @@ fit <- sampling(object = NBapproxVARHSMM_stan,
 
 ```r
 # - posterior predictive distribution and most likely state sequence (Viterbi)
-predictive <- NBapproxVARHSMM_getPredictive(fit , m, obs, pseudo = FALSE, 
+predictive <- NBapproxVARHSMM_getPredictive(fit, m, obs, pseudo = FALSE, 
                                             L1_ball = TRUE, ndraw = 50)
 z_hat <- predictive$z_hat
 y_hat <- predictive$y_hat
