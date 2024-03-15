@@ -15,7 +15,7 @@ A complete tutorial (R markdown) for using our software is contained in ***.rmd.
 
 ```r
 # - MCMC sampling  
-NBapproxVARHSMM_stan <- stan_model(file = "stan/NBapproxVARHSMM_sparse_l1ball_fullCov_NLP.stan")
+NBapproxVARHSMM_stan <- stan_model(file = "stan/NBapproxVARHSMM_sparse_l1ball_NLP.stan")
 fit <- sampling(object = NBapproxVARHSMM_stan,
                 data = NBapproxVARHSMM_data, seed = 123, 
                 chains = 1, iter = 1000 + N_MCMC, 
