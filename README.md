@@ -3,14 +3,16 @@
 
 **sparseVARHSMM** includes the *stan* software (and R utilities) to model temporal and contemporaneous (e.g. spatial) dependencies in multivariate time series data using a VAR HSMM, where the HSMM's generic state distribution (e.g. negative-binomial) is embedded in a ***special transition matrix*** structure (facilitating efficient likelihood evaluations and arbitrary approximation accuracy, as in [BayesApproxHSMM](https://github.com/Beniamino92/BayesianApproxHSMM/)). ***Sparsity*** in the model is induced via the choice  the novel $l_1$-ball projection prior priors on the VAR coefficents. Such a prior introduces unconstrained latent variables and transforms them onto the space of VAR parameters in a way that provides positive probability that any element is exactly zero. Importantly, the transformation is almost surely continuous and differentiable, which allows for efficient posterior sampling using algorithms such as Hamiltonian Monte Carlo. We also include options for ***non-local priors*** (NLP) on the parameters of the HSMM dwell distribution improving the ability of Bayesian model selection to distinguish whether the data is better supported by the simpler HMM, or more flexible HSMM. 
 
-This software allows for the following four modelling option 
+Further details about the model are found in the paper Hadj-Amar et al. 2024 "Bayesian Sparse Vector Autoregressive Switching Models With Application To Human Gesture Phase Segmentation", published in Annals of Applied Statistics. 
+
+This software allows for the following four modeling option 
 
 1. VAR HMM
 2. VAR HSMM [ $l_1$-ball ]
 3. VAR HSMM [ NLP ]
 4. VAR HSMM [ $l_1$-ball  and NLP ]
   
-A complete tutorial (R markdown) for using our software is contained in ***.rmd. You can find below some representative examples of the features provided by our modeling approach, applied to real sensor data, where we consider an approximate VAR HSMM [ $l_1$-ball  and NLP ] with negative-binomial dwell durations. Different dwell/emission distributions from the ones considered in this software package can be easily developed. Users need only change the corresponding function in our stan files (and R utilities). 
+A complete tutorial (R markdown) for using our software is contained in `simulationStudy1.Rmd` and `simulationStudy2.Rmd`. You can find below some representative examples of the features provided by our modeling approach, applied to real sensor data, where we consider an approximate VAR HSMM [ $l_1$-ball  and NLP ] with negative-binomial dwell durations. Different dwell/emission distributions from the ones considered in this software package can be easily developed. Users need only change the corresponding function in our stan files (and R utilities). 
   
 
 ```r
