@@ -12,7 +12,7 @@ This software allows for the following four modeling option
 3. VAR HSMM [ NLP ]
 4. VAR HSMM [ $l_1$-ball  and NLP ]
   
-A complete tutorial (R markdown) for using our software is contained in `simulationStudy1.Rmd` and `simulationStudy2.Rmd`, reproducing the simulation results provided in the article. The analysis on sensor data is contained in `GesturePhase.Rmd`. You can find below some representative examples of the features provided by our modeling approach, applied to real sensor data, where we consider an approximate VAR HSMM [ $l_1$-ball  and NLP ] with negative-binomial dwell durations. Different dwell/emission distributions from the ones considered in this software package can be easily developed. Users need only change the corresponding function in our stan files (and R utilities). 
+A complete tutorial (R markdown) for using our software and reproducing the simulation results provided in the article is contained in `simulationStudy1.Rmd` (Section 3) and `simulationStudy2.Rmd` (Supplementary, Section D). The analysis on sensor data is contained in `GesturePhase.Rmd`. You can find below some representative examples of the features provided by our modeling approach, applied to real sensor data, where we consider an approximate VAR HSMM [ $l_1$-ball  and NLP ] with negative-binomial dwell durations. Different dwell/emission distributions from the ones considered in this software package can be easily developed. Users need only change the corresponding function in our stan files (and R utilities). 
   
 
 ```r
