@@ -1,0 +1,2134 @@
+---
+title: "GesturePhase"
+author: "Beniamino Hadj-Amar and Jack Jewson"
+date: "15 March 2024"
+output: html_document
+---
+
+Results for VAR-HMM and VAR-HSMM models with l1-ball and non-local priros for Gesture-Phase data
+
+## Preamble {.tabset}
+
+### Working directory
+
++ Change this to be the directory that the stan files are saved in 
+
+```{r setwd, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+my_dir <- "..."
+
+```
+
+### Packages
+
+Loading the required packages.
+
+```{r packages, include=TRUE, echo=TRUE, eval=TRUE, cache=FALSE}
+
+library("farff")
+library("rstan")
+library("bayesplot")
+library("bridgesampling")
+library("mvtnorm")
+library("RColorBrewer")
+library("matrixStats")
+library("caret")
+library("LaplacesDemon")
+#library("igraph")
+
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+library(xtable)
+library(knitr)
+
+```
+
+```{r utils, include=TRUE, echo=TRUE, eval=TRUE, cache=FALSE}
+
+setwd(my_dir)
+
+source("include/util.R")
+source("include/util_VARHMM.R")
+source("include/util_data/util_data_Gesture_Phase.R")
+source("include/util_approxVARHSMM.R")
+source("include/util_NBapproxVARHSMM.R")
+source("include/util_VAR_l1_ball_priorSpecification.R")
+
+
+```
+
+### stan file compilations
+
+Loading and compiling .stan programs
+
+```{r stan_files, include=TRUE, echo=TRUE, eval = TRUE,  cache=FALSE}
+setwd(my_dir)
+
+# 1) HMM_l1
+VARHMM_l1ball_stan <- stan_model(file = "stan/VARHMM_l1ball.stan")
+# 2) HSMM_l1
+NBapproxVARHSMM_sparse_l1ball_stan <- stan_model(file = "stan/NBapproxVARHSMM_sparse_l1ball.stan") #
+# 3) HSMM-LASSO-NLP
+NBapproxVARHSMM_sparse_NLP_stan <- stan_model(file = "stan/NBapproxVARHSMM_sparse_NLP.stan") # 
+# 4) (our proposed approach) HSMM-l1-NLP
+NBapproxVARHSMM_sparse_l1ball_NLP_stan <- stan_model(file = "stan/NBapproxVARHSMM_sparse_l1ball_NLP.stan") # 
+
+```
+
+# Data {.tabset}
+
+## Data Specifications
+
+```{r data_specs, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+path <- paste(getwd(), "data/Gesture_Phase/", sep = "/")
+
+patients <- c("a", "b", "c")
+stories <- c(1, 2, 3) # patient a can be 1,2 or 3; patient b and c only 1 and 3
+processed <- FALSE # or TRUE
+
+```
+
+## Experiment Specifications (Training)
+
+```{r exp_specs, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+setwd(my_dir)
+
+# args
+patient ="a"
+story = 1
+processed <- T
+path <- paste(getwd(), "data/Gesture_Phase/", sep = "/")
+#path <- paste0(my_dir, "data/Gesture_Phase/")
+down_sample = 5
+win_s = 2
+rest_action = TRUE
+scale = TRUE
+sqrt_transf = TRUE
+#plt_all = TRUE
+#plt_univ = TRUE
+#plt_only_acc = TRUE
+plt_all = FALSE
+plt_univ = FALSE
+plt_only_acc = FALSE
+
+```
+
+## Loading the data (Training)
+
+```{r data_load, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+
+# full dataset
+Gesture_Phase <- get_data_Gesture_Phase(path,
+                                        patient = patient,
+                                        story = story, 
+                                        processed = processed, 
+                                        down_sample = down_sample,
+                                        win_s = win_s, 
+                                        rest_action = rest_action, 
+                                        scale = scale, 
+                                        sqrt_transf = sqrt_transf , 
+                                        plt_all = plt_all, 
+                                        plt_univ = plt_univ,
+                                        plt_only_acc = plt_only_acc)
+
+obs <- Gesture_Phase$obs
+state_seq <- Gesture_Phase$state
+state_phase <- Gesture_Phase$state_phase
+
+
+```
+
+## Subsetting the data (Training)
+
+time + variables
+
+```{r data_subset, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+#dev.off()
+#Gesture_Phase
+interval <- c(1, 200)
+
+Gesture_Phase_sub <- subset_data_Gesture_Phase(Gesture_Phase, interval,
+                                               only_acc = TRUE,
+                                               plt_all = plt_all,
+                                               plt_univ = plt_univ)
+
+Gesture_Phase_plot(Gesture_Phase_sub, only_acc = FALSE, plt_all = TRUE, plt_univ = TRUE)
+
+obs <- Gesture_Phase_sub $obs
+state_seq <- Gesture_Phase_sub $state
+state_phase <- Gesture_Phase_sub $state_phase
+
+N <- nrow(obs)
+D <- ncol(obs)
+
+
+
+```
+
+## Experiment Specifications (Test)
+
+```{r exp_specs_test, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+# args
+patient ="a"
+story = 2
+```
+
+## Loading the data (Test)
+
+```{r data_load_test, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+setwd(my_dir)
+
+# full dataset
+Gesture_Phase_test <- get_data_Gesture_Phase(path,
+                                        patient = patient,
+                                        story = story, 
+                                        processed = processed, 
+                                        down_sample = down_sample,
+                                        win_s = win_s, 
+                                        rest_action = rest_action, 
+                                        scale = scale, 
+                                        sqrt_transf = sqrt_transf , 
+                                        plt_all = plt_all, 
+                                        plt_univ = plt_univ,
+                                        plt_only_acc = plt_only_acc)
+
+obs_test <- Gesture_Phase_test$obs
+state_seq_test <- Gesture_Phase_test$state
+state_phase_test <- Gesture_Phase_test$state_phase
+
+
+```
+
+## Subsetting the data (Test)
+
+```{r data_subset_test, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+#dev.off()
+#Gesture_Phase
+interval <- c(1, 200)
+
+Gesture_Phase_sub_test <- subset_data_Gesture_Phase(Gesture_Phase_test, interval,
+                                               only_acc = TRUE,
+                                               plt_all = plt_all,
+                                               plt_univ = plt_univ)
+
+Gesture_Phase_plot(Gesture_Phase_sub_test, only_acc = FALSE, plt_all = TRUE, plt_univ = TRUE)
+
+obs_test <- Gesture_Phase_sub_test$obs
+state_seq_test <- Gesture_Phase_sub_test$state
+state_phase_test <- Gesture_Phase_sub_test$state_phase
+
+N_test <- nrow(obs)
+D <- ncol(obs)
+
+```
+
+# Prior Specification
+
+## Comparable Dwell Priors
+
+```{r Dirichelt_prior, include=TRUE, echo=TRUE, eval=TRUE, cache=TRUE}
+
+## State 1
+
+mean_target <- 10
+var_target <- 5^2
+
+dirichlet_set <- optim(par = c(5, 5), fn = function(par){geomDwell_mean_var_target_error(alpha_i = exp(par[1]), beta_i = exp(par[2]), mean_target, var_target)})
+
+exp(dirichlet_set$par)
+
+alpha_1 <- c(exp(dirichlet_set$par[1]), exp(dirichlet_set$par[2])/1)
+
+gamma_set <- optim(par = c(5, 5), fn = function(par){NBDwell_mean_var_target_error(a_0 = exp(par[1]), b_0 = exp(par[2]), mean_target, var_target)})
+
+exp(gamma_set$par)
+
+a_01 <- exp(gamma_set$par[1])
+b_01 <- exp(gamma_set$par[2])
+
+## State 2
+
+mean_target <- 10
+var_target <- 5^2
+
+dirichlet_set <- optim(par = c(5, 5), fn = function(par){geomDwell_mean_var_target_error(alpha_i = exp(par[1]), beta_i = exp(par[2]), mean_target, var_target)})
+
+exp(dirichlet_set$par)
+
+alpha_2 <- c(1/1*exp(dirichlet_set$par[2]), exp(dirichlet_set$par[1]))
+
+gamma_set <- optim(par = c(5, 5), fn = function(par){NBDwell_mean_var_target_error(a_0 = exp(par[1]), b_0 = exp(par[2]), mean_target, var_target)})
+
+exp(gamma_set$par)
+
+a_02 <- exp(gamma_set$par[1])
+b_02 <- exp(gamma_set$par[2])
+
+```
+
+## VAR Coefficients (l1-ball)
+
+```{r prior_specification_beta_sparsity, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+sparsity_level <- 0.75
+prob_stable <- 0.95
+N_MC <- 5000
+
+P <- 1
+
+## Setting lamabda ##
+
+lambda_vec <- seq(0.1, 1, length.out = 20)
+sparse_VAR_DExp_stability_prob_eval <- rep(NA, 20)
+
+for(j in 1:20){
+  sparse_VAR_DExp_stability_prob_eval[j] <- mean(sparse_VAR_DExp_stability_prob(N_MC, D, P, sparsity_level, lambda = lambda_vec[j])  == 1)
+  cat("lambda", j, "done", "\n")
+}
+
+lambda_beta_set <- lambda_vec[which.min(abs(sparse_VAR_DExp_stability_prob_eval - prob_stable))]
+
+
+## Setting r_alpha | lambda ##
+
+alpha_r_vec <- seq(0.1, 1, length.out = 20)
+theta_sparsity_eval <- rep(NA, 20)
+
+for(j in 1:20){
+  theta_sparsity_eval[j] <- mean(theta_prior_gen_l1_ball(D*D*P, r_alpha = alpha_r_vec[j], beta_gen = function(p){rlaplace(p, 0, lambda_beta_set)}, N_MC = 5000)  == 0)
+  cat("r_alpha", j, "done", "\n")
+}
+
+alpha_r_set <- alpha_r_vec[which.min(abs(theta_sparsity_eval - sparsity_level))]
+
+```
+
+## Others
+
+```{r prior_specification_others, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+## Covariance
+Omega_shape <- 1
+tau_loc <- 0.5
+tau_scale <- 0.5
+
+```
+
+# VAR-HMM {.tabset}
+
+## Model settings
+
+```{r VARHMM_model_settings, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+N_MCMC <- 5000
+warmup <- 1000
+K <- 2
+P <- 1
+
+```
+
+## Prior Specification
+
+```{r VARHMM_dwell_prior_specification, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+alpha_0 <- matrix(NA, nrow = K, ncol = K)
+alpha_0[1,] <- alpha_1
+alpha_0[2,] <- alpha_2
+
+```
+
+## MCMC
+
+```{r VARHMM_l1ball_fit, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+# data
+VARHMM_l1ball_data <- list(N = N, D = D, K = K, 
+                   P = P, y = obs, 
+                   beta_0_loc = matrix(0, K, D), 
+                   beta_0_scale = lambda_beta_set, 
+                   beta_loc = 0, beta_scale = lambda_beta_set,
+                   tau_loc = tau_loc, tau_scale = tau_scale, 
+                   #alpha_0 = alpha_0, 
+                   alpha_0_rest = matrix(alpha_0[!diag(K)], nrow = K, ncol = K-1),
+                   alpha_0_diag = diag(alpha_0),
+                   Omega_shape = Omega_shape,
+                   r_alpha = alpha_r_set)
+
+L_Omega_init <- array(NA, dim = c(K, D, D))
+for(k in 1:K){
+  L_Omega_init[k,,] <- diag(1, D)
+}
+tilde_beta_init <- matrix(0, nrow = K, ncol = D*D*P)
+for(k in 1:K){
+  tilde_beta_init[k,] <- as.vector(diag(1/sqrt(N), D))
+}
+
+# init
+VARHMM_init <- list(
+  #gamma = matrix(c(10/11, 1/11, 1/11, 10/11), nrow = 2, ncol = 2, byrow = TRUE),
+  gamma_diag = c(10/11, 10/11),
+  gamma_rest =  matrix(c(1), nrow = 2, ncol = 1, byrow = TRUE),
+  beta_0 = matrix(0, nrow = K, ncol = D),
+  #tilde_beta = matrix(0, nrow = K, ncol = D*D*P),
+  tilde_beta = tilde_beta_init,
+  tau = matrix(0.5, nrow = K, ncol = D),
+  L_Omega = L_Omega_init,
+  tilde_ray = c(D, D)
+  )
+
+
+# fit 
+VARHMM_l1ball_fit <- sampling(object = VARHMM_l1ball_stan,
+                       data = VARHMM_l1ball_data, seed = 123, 
+                       init = list(c1 = VARHMM_init),
+                       chains = 1, iter = warmup + N_MCMC, 
+                       warmup = warmup)
+
+
+VARHMM_l1ball_params <- rstan::extract(VARHMM_l1ball_fit)
+
+get_elapsed_time(VARHMM_l1ball_fit)
+
+VARHMM_l1ball_bridge <- bridge_sampler(VARHMM_l1ball_fit, silent = TRUE,  repetitions = 10)
+
+
+```
+
+saving to RData
+
+```{r VARHMM_l1ball_fit_save, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+save(VARHMM_l1ball_fit, VARHMM_l1ball_bridge, file = "VARHMM_l1ball_fit_Ex2.RData")
+
+```
+
+## Computational Time 
+
+```{r VARHMM_l1ball_computationaltime, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+get_elapsed_time(VARHMM_l1ball_fit)
+cat("total: ", sum(get_elapsed_time(VARHMM_l1ball_fit)))
+```
+
+
+## Chain Diag
+
+```{r VARHMM_l1ball_diag, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+fit_summary <- summary(VARHMM_l1ball_fit)
+
+mean(fit_summary$summary[1:(4 + 4*D + 4*D^2 + 2),9], na.rm = TRUE)
+min(fit_summary$summary[1:(4 + 4*D + 4*D^2 + 2),9], na.rm = TRUE)
+
+traceplot(VARHMM_l1ball_fit, pars = c("ray[1]", "ray[2]", "lp__", "gamma[1,1]", "gamma[2,2]"))
+
+max(VARHMM_l1ball_params$lp__)
+
+```
+
+## Posterior Predictive 
+
+```{r VARHMM_l1ball_posterior_predictive_rn, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+
+VAR_HMM_predictive <- VARHMM_get_predictive(VARHMM_l1ball_fit, obs, pseudo = FALSE, 
+                                             L1_ball = TRUE, ndraw = 100)
+
+
+```
+
+```{r VARHMM_l1ball_posterior_predictive, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+p_hat <- VAR_HMM_predictive$log_pred_density
+z_hat <- VAR_HMM_predictive$z_hat
+y_hat <- VAR_HMM_predictive$y_hat
+
+# plot posterior predictive
+K <- dim(rstan::extract(VARHMM_l1ball_fit)$beta_0)[2]
+plotPosteriorPredictive(obs, y_hat, z_hat, K)
+
+state_seq[1:20]
+z_hat[1:20]
+## this is a vector the length of the states saying which estimated states corresponds to the which real state - then below I keep the dat agenerating as it is and repce by state_corresponce indexes
+true_state_order <- c(1, 2)
+estimated_state_order_HMM <- c(2, 1)
+state_correspondence <- true_state_order[estimated_state_order_HMM]
+
+state_seq[1:20]
+state_correspondence[z_hat[1:20]]
+
+VARHMM_l1ball_state_errors <- sum(abs(state_seq != state_correspondence[z_hat]))
+VARHMM_l1ball_state_errors
+
+VARHMM_l1ball_state_errors/N
+
+VARHMM_l1ball_llh <- sum(p_hat)
+VARHMM_l1ball_llh
+
+
+```
+
+
+## Confusion Matrix + Measure of Accuracy (training)
+```{r VARHMM_l1ball_stateaccuracy_training, include=TRUE,echo=TRUE, eval = FALSE,  cache=FALSE}
+
+switch_z_hat = TRUE
+if (switch_z_hat) 
+{
+  state_seq_est = switch_states(z_hat)
+} else {
+  state_seq_est = z_hat
+}
+
+conf_mat <- confusionMatrix(data=factor(state_seq_est),
+								               	reference = factor(state_seq))
+TP = conf_mat$table[1, 1]
+FP = conf_mat$table[1, 2]
+FN = conf_mat$table[2, 1]
+TN = conf_mat$table[2, 2]
+
+# classification performance
+acc = (TP + TN)/ (TP + TN + FN + FP)
+sens = TP/(TP+FN)# (also called recall)
+spec = TN/(TN+FP)
+F1 = TP/(TP + 0.5*(FP + FN))
+MCC = (TP*TN - FP*FN)/(sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN)))
+
+cat("acc:", acc, "\n")
+cat("sens:", sens, "\n")
+cat("spec :", spec, "\n")
+cat("F1:", F1, "\n")
+cat("MCC:", MCC, "\n")
+
+```
+
+
+## State Probabilities
+
+```{r VARHMM_l1ball_state_probabilities, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+par(mfrow = c(2, 1))
+Gesture_Phase_plot(Gesture_Phase_sub, only_acc = FALSE, plt_all = TRUE, plt_univ = FALSE)
+VARHMM_plotStateProbs(VARHMM_l1ball_fit, obs, pseudo = FALSE, L1_ball = TRUE)
+
+VARHMM_plotStateProbs_state_probs <- VARHMM_stateProbs(VARHMM_l1ball_params, obs, pseudo = FALSE, L1_ball = TRUE)
+
+#VARHMM_plotStateProbs_state_probs_Bayesian <- VARHMM_stateProbs_Bayesian(sims = VARHMM_l1ball_params, obs, pseudo = FALSE, L1_ball = TRUE)
+
+```
+
+## Breir Score Selection
+
+```{r VARHMM_l1ball_state_probabilities_BreirScore, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+VARHMM_l1ball_breir_score <- sum((VARHMM_plotStateProbs_state_probs[estimated_state_order_HMM[1],] - (state_seq == 1))^2)/(N)
+
+VARHMM_l1ball_breir_score
+
+```
+
+## VAR coefficients
+
+```{r VARHMM_l1ball_VAR, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+
+# posterior estimate beta (projected)
+beta_est <- get_beta_est(VARHMM_l1ball_params, L1_ball = TRUE, mat = TRUE)
+
+
+plot.heat(Matrix = beta_est[estimated_state_order_HMM[1],,,1], Xlab="", Ylab="", Main="Estimated theta - Resting", limit=c(-1,1))
+
+plot.heat(Matrix = beta_est[estimated_state_order_HMM[2],,,1], Xlab="", Ylab="", Main="Estimated theta - Active", limit=c(-1,1))
+
+```
+
+## Inclusion Probabilities
+
+```{r VARHMM_l1ball_p_inclusion, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+# - inclusion probabilities 
+p_est <- get_inclusion_sims(VARHMM_l1ball_params, p_est = TRUE)$p_est
+p_est[1, , , 1]
+p_est[2, , , 1]
+
+plot.heat(Matrix = p_est[estimated_state_order_HMM[1], , , 1], Xlab="", Ylab="", Main="Estimated p - Resting", limit=c(0,1))
+plot.heat(Matrix = p_est[estimated_state_order_HMM[2], , , 1], Xlab="", Ylab="", Main="Estimated p - Active", limit=c(0,1))
+
+z_hat[1] ## which state is resting
+
+``` 
+
+## Covariance Estimation
+
+```{r VARHMM_l1ball_cov_params, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+### Sigma 
+# - covariance matricies
+Sigma_est <- list()
+for (k in 1:K) {
+  Sigma.sims <- array(NA, dim = c(N_MCMC, D, D))# where is K in here?
+  for (tt in 1:N_MCMC) {
+    Omega <- VARHMM_l1ball_params$L_Omega[tt, k, ,] %*% t(VARHMM_l1ball_params$L_Omega[tt, k, ,])
+    tau <- VARHMM_l1ball_params$tau[tt, k, ]
+    Sigma.sims[tt, ,] <- quad_form_diag(Omega, tau)
+  }
+  Sigma_est[[k]] <- apply(Sigma.sims, c(2, 3), mean)
+}; Sigma_est;
+
+plot.heat(Matrix = cov2cor(Sigma_est[[estimated_state_order_HMM[1]]]), Xlab="", Ylab="", Main="Estimated Sigma - Resting", limit=c(-1,1))
+
+plot.heat(Matrix = cov2cor(Sigma_est[[estimated_state_order_HMM[2]]]), Xlab="", Ylab="", Main="Estimated Sigma - Active", limit=c(-1,1))
+
+```
+
+## Dwell Distribution 
+
+```{r VARHMM_l1ball_dwell, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+apply(VARHMM_l1ball_params$gamma, c(2, 3), mean)
+
+VARHMM_l1ball_bridge$logml
+
+hist(VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[1],estimated_state_order_HMM[1]], breaks = 50, xlab = "gamma[1, 1]", ylab = "Density", probability = TRUE)
+
+hist(VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[2],estimated_state_order_HMM[2]], breaks = 50, xlab = "gamma[2, 2]", ylab = "Density", probability = TRUE)
+```
+
+## Posterior Predictive + Most likeliy state sequence (TEST)
+
+```{r VARHMM_l1ball_dwell_TESTDATA_pred_rn, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+VAR_HMM_predictive_test <- VARHMM_get_predictive(VARHMM_l1ball_fit,
+                                                                   obs_test, 
+                                                                   pseudo = FALSE, 
+                                                                   L1_ball = TRUE, ndraw = 100)
+
+
+```
+
+```{r VARHMM_l1ball_dwell_TESTDATA_pred, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+p_hat_test <- VAR_HMM_predictive_test$log_pred_density
+z_hat_test <- VAR_HMM_predictive_test$z_hat
+y_hat_test <- VAR_HMM_predictive_test$y_hat
+
+K <- dim(rstan::extract(VARHMM_l1ball_fit)$beta_0)[2]
+plotPosteriorPredictive(obs_test, y_hat_test, z_hat_test, K)
+
+VARHMM_l1ball_state_errors_test <- sum(abs(state_seq_test != state_correspondence[z_hat_test]))
+VARHMM_l1ball_state_errors_test
+
+VARHMM_l1ball_llh_test <- sum(p_hat_test)
+VARHMM_l1ball_llh_test
+
+
+```
+
+
+## Confusion Matrix + Measure of Accuracy (TEST)
+```{r VARHMM_l1ball_stateaccuracy_test, include=TRUE,echo=TRUE, eval = FALSE,  cache=FALSE}
+
+switch_z_hat = TRUE
+if (switch_z_hat) 
+{
+  state_seq_est = switch_states(z_hat_test)
+} else {
+  state_seq_est = z_hat_test
+}
+
+conf_mat <- confusionMatrix(data=factor(state_seq_est),
+								               	reference = factor(state_seq_test))
+TP = conf_mat$table[1, 1]
+FP = conf_mat$table[1, 2]
+FN = conf_mat$table[2, 1]
+TN = conf_mat$table[2, 2]
+
+# classification performance
+acc = (TP + TN)/ (TP + TN + FN + FP)
+sens = TP/(TP+FN)# (also called recall)
+spec = TN/(TN+FP)
+F1 = TP/(TP + 0.5*(FP + FN))
+MCC = (TP*TN - FP*FN)/(sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN)))
+
+cat("acc:", acc, "\n")
+cat("sens:", sens, "\n")
+cat("spec :", spec, "\n")
+cat("F1:", F1, "\n")
+cat("MCC:", MCC, "\n")
+
+```
+
+## State probs plot + Data (TEST)
+
+```{r VARHMM_l1ball_dwell_TESTDATA_stateprobs, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+Gesture_Phase_plot(Gesture_Phase_test, only_acc = TRUE, plt_all = TRUE, plt_univ = TRUE)
+#Gesture_Phase_plot(Gesture_Phase_sub_test, only_acc = TRUE, plt_all = TRUE, plt_univ = FALSE)
+dev.off()
+VARHMM_plotStateProbs(VARHMM_l1ball_fit, obs_test, 
+                               pseudo = FALSE, L1_ball = TRUE)
+
+VARHMM_plotStateProbs_state_probs_test <- VARHMM_stateProbs(VARHMM_l1ball_params, obs_test, pseudo = FALSE, L1_ball = FALSE)
+```
+
+
+# VAR-HSMM Negative Binomial {.tabset}
+
+## Model settings
+
+```{r NBapproxVARHSMM_model_settings, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+N_MCMC <- 5000
+warmup <- 1000
+K <- 2
+P <- 1
+
+m <- c(15, 15)
+
+```
+
+## Local Prior for phi
+
+$phi^{-1} \sim \mathcal{G}(c_0, c_0 + 1) \Rightarrow phi \sim \mathcal{IG}(c_0, c_0 + 1) $
+
+```{r LP_IG_phi_prior_set, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+a_0_phi_LP <- 2 # mode is 1
+b_0_phi_LP <- a_0_phi_LP + 1# mode is 1
+
+pinvgamma(4, shape = a_0_phi_LP, scale = b_0_phi_LP) - pinvgamma(0.25, shape = a_0_phi_LP, scale = b_0_phi_LP)
+
+a_0_phi_LP <- 4
+b_0_phi_LP <- 5 # mode is 1
+
+pinvgamma(4, shape = a_0_phi_LP, scale = b_0_phi_LP) - pinvgamma(0.25, shape = a_0_phi_LP, scale = b_0_phi_LP)
+
+phim1_seq <- seq(0, 10, length.out = 1000)
+
+plot(phim1_seq, dgamma(phim1_seq, shape = a_0_phi_LP, rate = b_0_phi_LP), xlab = "1/phi", ylab = "Density", lwd = 3, type = "l")
+
+```
+
+
+## Prior Specification
+
+```{r NBapproxVARHSMM_prior_specification, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+a_0 <- c(a_01, a_02)
+b_0 <- c(b_01, b_02)
+
+alpha_0 <- matrix(c(alpha_1[2], alpha_2[c(1)]), nrow = 2, ncol = 1, byrow = TRUE)
+
+```
+
+## MCMC
+
+```{r NBapproxVARHSMM_l1ball_fit, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+# data
+NBapproxVARHSMM_l1ball_data <- list(N = N, D = D, K = K, 
+                   P = P, y = obs, 
+                   m = m,
+                   beta_0_loc = matrix(0, K, D), 
+                   beta_0_scale = lambda_beta_set, 
+                   beta_loc = 0, beta_scale = lambda_beta_set,
+                   tau_loc = tau_loc, tau_scale = tau_scale, 
+                   Omega_shape = Omega_shape,
+                   r_alpha = alpha_r_set,
+                   a_0_lambda = a_0, 
+                   b_0_lambda = b_0, 
+                   a_0_phi = a_0_phi_LP, 
+                   b_0_phi = b_0_phi_LP, 
+                   alpha_0 = matrix(1, nrow = K, ncol = (K-1)))
+
+NBapproxVARHSMM_init <- list(
+  gamma = matrix(c(1), nrow = 2, ncol = 1, byrow = TRUE),
+  tilde_p = diag(apply(VARHMM_l1ball_params$gamma, c(2, 3), mean)),
+  tilde_phim1 = c(0.5, 0.5),
+  beta_0 = apply(VARHMM_l1ball_params$beta_0, c(2, 3), mean),
+  tilde_beta = apply(VARHMM_l1ball_params$tilde_beta, c(2, 3), mean),
+  tau = apply(VARHMM_l1ball_params$tau, c(2, 3), mean),
+  L_Omega = apply(VARHMM_l1ball_params$L_Omega, c(2, 3, 4), mean),
+  tilde_ray = colMeans(VARHMM_l1ball_params$tilde_ray)
+  )
+
+
+# fit 
+#NBapproxVARHSMM_l1ball_fit <- sampling(object = NBapproxVARHSMM_l1ball_stan,
+NBapproxVARHSMM_l1ball_fit <- sampling(object = NBapproxVARHSMM_sparse_l1ball_stan,
+                       data = NBapproxVARHSMM_l1ball_data, seed = 123, 
+                       init = list(c1 = NBapproxVARHSMM_init),
+                       chains = 1, iter = warmup + N_MCMC, 
+                       warmup = warmup)
+
+
+NBapproxVARHSMM_l1ball_params <- rstan::extract(NBapproxVARHSMM_l1ball_fit)
+
+get_elapsed_time(NBapproxVARHSMM_l1ball_fit)
+
+NBapproxVARHSMM_l1ball_bridge <- bridge_sampler(NBapproxVARHSMM_l1ball_fit, silent = TRUE,  repetitions = 10)
+```
+
+
+```{r NBapproxVARHSMM_l1ball_fit_save, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+save(NBapproxVARHSMM_l1ball_fit, NBapproxVARHSMM_l1ball_bridge, file = "NBapproxVARHSMM_l1ball_fit_Ex2.RData")
+
+
+```
+
+## Computational Time 
+
+```{r NBapproxVARHSMM_l1ball_comptime, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+get_elapsed_time(NBapproxVARHSMM_l1ball_fit)
+cat("total: ", sum(get_elapsed_time(NBapproxVARHSMM_l1ball_fit)))
+```
+
+## Chain Diag
+
+```{r NBapproxVARHSMM_l1ball_diag, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+fit_summary <- summary(NBapproxVARHSMM_l1ball_fit)
+
+mean(fit_summary$summary[1:(4 + 4*D + 4*D^2 + 2 + 2),9], na.rm = TRUE)
+min(fit_summary$summary[1:(4 + 4*D + 4*D^2 + 2 + 2),9], na.rm = TRUE)
+
+traceplot(NBapproxVARHSMM_l1ball_fit, pars = c("ray[1]", "ray[2]", "lp__", "tilde_p[1]", "tilde_p[2]", "tilde_phim1[1]", "tilde_phim1[2]"))
+
+
+
+```
+
+## Posterior Predictive 
+
+```{r NBapprox_VAR_HSMM_l1ball_posterior_predictive_rn, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+
+NBapprox_VAR_HSMM_predictive <- NBapproxVARHSMM_getPredictive(NBapproxVARHSMM_l1ball_fit , m, obs, 
+                                                  pseudo = FALSE, 
+                                                  L1_ball = TRUE, ndraw = 100)
+
+
+
+```
+
+```{r NBapprox_VAR_HSMM_l1ball_posterior_predictive, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+p_hat <- NBapprox_VAR_HSMM_predictive$log_pred_density
+z_hat <- NBapprox_VAR_HSMM_predictive$z_hat
+y_hat <- NBapprox_VAR_HSMM_predictive$y_hat
+
+# plot posterior predictive
+K <- dim(rstan::extract(NBapproxVARHSMM_l1ball_fit)$beta_0)[2]
+plotPosteriorPredictive(obs, y_hat, z_hat, K)
+
+Gesture_Phase_plot(Gesture_Phase_sub, only_acc = FALSE, plt_all = FALSE, plt_univ = TRUE)
+
+state_seq[1:20]
+z_hat[1:20]
+true_state_order <- c(1, 2)
+estimated_state_order_HSMM <- c(1, 2)
+state_correspondence <- true_state_order[estimated_state_order_HSMM]
+
+state_seq[1:20]
+state_correspondence[z_hat[1:20]]
+
+NBapproxVARHSMM_l1ball_state_errors <- sum(abs(state_seq != state_correspondence[z_hat]))
+NBapproxVARHSMM_l1ball_state_errors
+
+NBapproxVARHSMM_l1ball_state_errors/N
+
+NBapproxVARHSMM_l1ball_llh <- sum(p_hat)
+NBapproxVARHSMM_l1ball_llh
+
+VARHMM_l1ball_llh
+
+```
+
+## Confusion Matrix + Measure of Accuracy (TRAINING)
+
+```{r NBapproxVARHSMM_l1ball_stateaccuracy, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+
+switch_z_hat = FALSE
+if (switch_z_hat) 
+{
+  state_seq_est = switch_states(z_hat)
+} else {
+  state_seq_est = z_hat
+}
+
+conf_mat <- confusionMatrix(data=factor(state_seq_est),
+								               	reference = factor(state_seq))
+TP = conf_mat$table[1, 1]
+FP = conf_mat$table[1, 2]
+FN = conf_mat$table[2, 1]
+TN = conf_mat$table[2, 2]
+
+# classification performance
+acc = (TP + TN)/ (TP + TN + FN + FP)
+sens = TP/(TP+FN)# (also called recall)
+spec = TN/(TN+FP)
+F1 = TP/(TP + 0.5*(FP + FN))
+MCC = (TP*TN - FP*FN)/(sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN)))
+
+cat("acc:", acc, "\n")
+cat("sens:", sens, "\n")
+cat("spec :", spec, "\n")
+cat("F1:", F1, "\n")
+cat("MCC:", MCC, "\n")
+```
+
+
+## State Probabilities
+
+```{r NBapproxVARHSMM_l1ball_state_probabilities, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+par(mfrow = c(2, 1))
+Gesture_Phase_plot(Gesture_Phase, only_acc = FALSE, plt_all = TRUE, plt_univ = FALSE)
+
+NBapproxVARHSMM_plotStateProbs(NBapproxVARHSMM_l1ball_fit, obs, m = m, pseudo = FALSE, L1_ball = TRUE)
+
+NBapproxVARHSMM_plotStateProbs_state_probs <- NBapproxVARHSMM_stateProbs(NBapproxVARHSMM_l1ball_params, obs, m = m, pseudo = FALSE, L1_ball = TRUE)
+
+#NBapproxVARHSMM_plotStateProbs_state_probs_Bayesian <- NBapproxVARHSMM_stateProbs_Bayesian(sims = NBapproxVARHSMM_l1ball_params, obs, m = m, pseudo = FALSE, L1_ball = TRUE)
+
+```
+
+## Breir Score Selection
+
+```{r NBapproxVARHSMM_l1ball_state_probabilities_BreirScore, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+m_temp <- c(0, cumsum(m))
+
+NBapproxVARHSMM_l1ball_breir_score <- sum((colSums(NBapproxVARHSMM_plotStateProbs_state_probs[(m_temp[estimated_state_order_HSMM[1]] + 1):m_temp[estimated_state_order_HSMM[1]+1],]) - (state_seq == 1))^2)/(N)
+
+NBapproxVARHSMM_l1ball_breir_score
+```
+
+## VAR coefficients
+
+```{r NBapproxVARHSMM_l1ball_VAR, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+
+# posterior estimate beta (projected)
+beta_est_NBapproxVARHSMM <- get_beta_est(NBapproxVARHSMM_l1ball_params, L1_ball = TRUE, mat = TRUE)
+
+plot.heat(Matrix = beta_est_NBapproxVARHSMM[estimated_state_order_HSMM[1],,,1], Xlab="", Ylab="", Main="Estimated theta - HSMM", limit=c(-1,1))
+plot.heat(Matrix = beta_est[estimated_state_order_HMM[1],,,1], Xlab="", Ylab="", Main="Estimated theta - HMM", limit=c(-1,1))
+plot.heat(Matrix = beta_est_NBapproxVARHSMM[estimated_state_order_HSMM[2],,,1], Xlab="", Ylab="", Main="Estimated theta - HSMM", limit=c(-1,1))
+plot.heat(Matrix = beta_est[estimated_state_order_HMM[2],,,1], Xlab="", Ylab="", Main="Estimated theta - HMM", limit=c(-1,1))
+
+
+```
+
+## Inclusion Probabilities
+
+```{r NBapproxVARHSMM_l1ball_p_inclusion, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+# - inclusion probabilities 
+p_est_NBapproxVARHSMM <- get_inclusion_sims(NBapproxVARHSMM_l1ball_params, p_est = TRUE)$p_est
+
+
+plot.heat(Matrix = p_est_NBapproxVARHSMM[estimated_state_order_HSMM[1], , , 1], Xlab="", Ylab="", Main="Estimated p - HSMM", limit=c(0,1))
+plot.heat(Matrix = p_est[estimated_state_order_HMM[1], , , 1], Xlab="", Ylab="", Main="Estimated p - HMM", limit=c(0,1))
+plot.heat(Matrix = p_est_NBapproxVARHSMM[estimated_state_order_HSMM[2], , , 1], Xlab="", Ylab="", Main="Estimated p - HSMM", limit=c(0,1))
+plot.heat(Matrix = p_est[estimated_state_order_HMM[2], , , 1], Xlab="", Ylab="", Main="Estimated p - HMM", limit=c(0,1))
+
+z_hat[1] ## which state is resting
+```
+
+
+## Covariance Estimation
+
+Plot cov2cors, the standardisation only acted marginally so should leave the correlations in tact
+
+```{r NBapproxVARHSMM_l1ball_cov_params, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+### Sigma 
+# - covariance matricies
+Sigma_est_NBapproxVARHSMM <- list()
+for (k in 1:K) {
+  Sigma.sims <- array(NA, dim = c(N_MCMC, D, D))# where is K in here?
+  for (tt in 1:N_MCMC) {
+    Omega <- NBapproxVARHSMM_l1ball_params$L_Omega[tt, k, ,] %*% t(NBapproxVARHSMM_l1ball_params$L_Omega[tt, k, ,])
+    tau <- NBapproxVARHSMM_l1ball_params$tau[tt, k, ]
+    Sigma.sims[tt, ,] <- quad_form_diag(Omega, tau)
+  }
+  Sigma_est_NBapproxVARHSMM[[k]] <- apply(Sigma.sims, c(2, 3), mean)
+}; Sigma_est_NBapproxVARHSMM; 
+
+plot.heat(Matrix = cov2cor(Sigma_est_NBapproxVARHSMM[[estimated_state_order_HSMM[1]]]), Xlab="", Ylab="", Main="Estimated Sigma - HSMM", limit=c(-1,1))
+plot.heat(Matrix = cov2cor(Sigma_est[[estimated_state_order_HMM[1]]]), Xlab="", Ylab="", Main="Estimated Sigma - HMM", limit=c(-1,1))
+
+plot.heat(Matrix = cov2cor(Sigma_est_NBapproxVARHSMM[[estimated_state_order_HSMM[2]]]), Xlab="", Ylab="", Main="Estimated Sigma - HSMM", limit=c(-1,1))
+plot.heat(Matrix = cov2cor(Sigma_est[[estimated_state_order_HMM[2]]]), Xlab="", Ylab="", Main="Estimated Sigma - HMM", limit=c(-1,1))
+
+```
+
+## Dwell Parameters
+
+```{r NBapproxVARHSMM_l1ball_dwell_parameters, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+colMeans(NBapproxVARHSMM_l1ball_params$lambda)[estimated_state_order_HSMM] + 1## these should match with lambda + 1
+
+mean(1/(1 - VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[1],estimated_state_order_HMM[1]]))
+mean(1/(1 - VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[2],estimated_state_order_HMM[2]]))
+
+mean(VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[1],estimated_state_order_HMM[1]]/(1 - VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[1],estimated_state_order_HMM[1]]))## these should match with lambda
+mean(VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[2],estimated_state_order_HMM[2]]/(1 - VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[2],estimated_state_order_HMM[2]]))
+
+colMeans(1/NBapproxVARHSMM_l1ball_params$phim1)[estimated_state_order_HSMM]
+
+colMeans(NBapproxVARHSMM_l1ball_params$tilde_phim1)[estimated_state_order_HSMM]
+
+phim1_seq <- seq(0, 10, length.out = 1000)
+plot(density(NBapproxVARHSMM_l1ball_params$phim1[,estimated_state_order_HSMM[1]]), xlab = "phi^{-1}", ylab = "Density", lwd = 3)
+points(phim1_seq, dgamma(phim1_seq, shape = a_0_phi_LP, rate = b_0_phi_LP), lwd = 3, type = "l", lty = 2, col = "red")
+legend("topright", legend = c("Prior", "Posterior"), col = c("red", "black"), lwd = c(3, 3), lty = c(2, 1), bty = "n")
+plot(density(NBapproxVARHSMM_l1ball_params$phim1[,estimated_state_order_HSMM[2]]), xlab = "phi^{-1}", ylab = "Density", lwd = 3)
+points(phim1_seq, dgamma(phim1_seq, shape = a_0_phi_LP, rate = b_0_phi_LP), lwd = 3, type = "l", lty = 2, col = "red")
+legend("topright", legend = c("Prior", "Posterior"), col = c("red", "black"), lwd = c(3, 3), lty = c(2, 1), bty = "n")
+
+NBapproxVARHSMM_l1ball_bridge$logml
+VARHMM_l1ball_bridge$logml
+
+mean(NBapproxVARHSMM_l1ball_bridge$logml)
+mean(VARHMM_l1ball_bridge$logml)
+
+boxplot(cbind(VARHMM_l1ball_bridge$logml, NBapproxVARHSMM_l1ball_bridge$logml), ylab = "log-ML", xlab = "Model", names = c("HMM", "HSMM"))
+```
+
+## Posterior Predictive + Most likeliy state sequence (TEST)
+
+```{r NBapproxVARHSMM_l1ball_dwell_TESTDATA_pred_rn, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+NBapprox_VAR_HSMM_predictive_test <- NBapproxVARHSMM_getPredictive(NBapproxVARHSMM_l1ball_fit,
+                                                                   m, obs_test, 
+                                                                   pseudo = FALSE, 
+                                                                   L1_ball = TRUE, ndraw = 100)
+
+
+
+
+```
+
+```{r NBapproxVARHSMM_l1ball_dwell_TESTDATA_pred, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+p_hat_test <- NBapprox_VAR_HSMM_predictive_test$log_pred_density
+z_hat_test <- NBapprox_VAR_HSMM_predictive_test$z_hat
+y_hat_test <- NBapprox_VAR_HSMM_predictive_test$y_hat
+
+K <- dim(rstan::extract(NBapproxVARHSMM_l1ball_fit)$beta_0)[2]
+plotPosteriorPredictive(obs_test, y_hat_test, z_hat_test, K)
+
+NBapproxVARHSMM_l1ball_state_errors_test <- sum(abs(state_seq_test != state_correspondence[z_hat_test]))
+NBapproxVARHSMM_l1ball_state_errors_test
+
+NBapproxVARHSMM_l1ball_llh_test <- sum(p_hat_test)
+NBapproxVARHSMM_l1ball_llh_test
+
+VARHMM_l1ball_llh_test
+
+
+```
+
+
+## Confusion Matrix + Measure of Accuracy (TEST)
+
+```{r NBapproxVARHSMM_l1ball_stateaccuracy_test, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+
+switch_z_hat = FALSE
+if (switch_z_hat) 
+{
+  state_seq_est = switch_states(z_hat_test)
+} else {
+  state_seq_est = z_hat_test
+}
+
+conf_mat <- confusionMatrix(data=factor(state_seq_est),
+								               	reference = factor(state_seq_test))
+TP = conf_mat$table[1, 1]
+FP = conf_mat$table[1, 2]
+FN = conf_mat$table[2, 1]
+TN = conf_mat$table[2, 2]
+
+# classification performance
+acc = (TP + TN)/ (TP + TN + FN + FP)
+sens = TP/(TP+FN)# (also called recall)
+spec = TN/(TN+FP)
+F1 = TP/(TP + 0.5*(FP + FN))
+MCC = (TP*TN - FP*FN)/(sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN)))
+
+cat("acc:", acc, "\n")
+cat("sens:", sens, "\n")
+cat("spec :", spec, "\n")
+cat("F1:", F1, "\n")
+cat("MCC:", MCC, "\n")
+```
+
+
+
+## State probs plot + Data (TEST)
+
+```{r NBapproxVARHSMM_l1ball_dwell_TESTDATA_stateprobs, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+Gesture_Phase_plot(Gesture_Phase_test, only_acc = TRUE, plt_all = TRUE, plt_univ = TRUE)
+#Gesture_Phase_plot(Gesture_Phase_sub_test, only_acc = TRUE, plt_all = TRUE, plt_univ = FALSE)
+dev.off()
+NBapproxVARHSMM_plotStateProbs(NBapproxVARHSMM_l1ball_fit, obs_test, m = m, 
+                               pseudo = FALSE, L1_ball = TRUE)
+
+NBapproxVARHSMM_plotStateProbs_state_probs_test <- NBapproxVARHSMM_stateProbs(NBapproxVARHSMM_l1ball_params, obs_test, m = m, pseudo = FALSE, L1_ball = TRUE)
+
+```
+
+
+
+
+
+
+
+
+
+# VAR-HSMM Negative Binomial - NLP {.tabset}
+
+## Model settings
+
+```{r NBapproxVARHSMM_NLP_model_settings, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+N_MCMC <- 5000
+warmup <- 1000
+K <- 2
+P <- 1
+
+m <- c(15, 15)
+
+```
+
+## NLP specification
+
+
+```{r NLP_prior_set, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+rhom1_seq <- seq(0, 10, length.out = 100)
+ind_of_1 <- which.min(abs(rhom1_seq - 1))
+rhom1_seq[ind_of_1]
+
+## State 1
+
+p_1 <- apply(VARHMM_l1ball_params$gamma, c(2, 3), mean)[1, 1]
+
+TVD_NegBinom_Geom_HMM_fit1 <- rep(NA, 100)
+for(i in 1:100){
+  TVD_NegBinom_Geom_HMM_fit1[i] <- TVD_NegBinom_Geom_rhom1(p = p_1, rhom1 = rhom1_seq[i], x_thresh = 1000)
+}
+
+rhom1_lower_1 <- rhom1_seq[which.min(abs(TVD_NegBinom_Geom_HMM_fit1[1:ind_of_1] - 0.1))]
+rhom1_upper_1 <- rhom1_seq[(ind_of_1 - 1) + which.min(abs(TVD_NegBinom_Geom_HMM_fit1[ind_of_1:100] - 0.1))]
+
+plot(rhom1_seq, TVD_NegBinom_Geom_HMM_fit1, xlab = "1/rho", ylab = "Geom - NB TVD State 1", type = "l", lwd = 3)
+abline(v = rhom1_lower_1, lwd = 3, lty = 2, col = "red")
+abline(v = rhom1_upper_1, lwd = 3, lty = 2, col = "red")
+abline(h = 0.1, lwd = 1, col = "grey")
+
+#tau_set_1 <- optimise(f = function(tau){abs(integrate(f = function(phi){dpMOM_phi(phi, tau, sigma2 = 1)}, lower = rhom1_lower_1, upper = rhom1_upper_1)$value - 0.01)}, lower = 0.01, upper = 10)
+tau_set_1 <- optimise(f = function(tau){abs(integrate(f = function(phi){dpeMOM_phi(phi, tau, sigma2 = 1)}, lower = rhom1_lower_1, upper = rhom1_upper_1)$value - 0.01)}, lower = 0.01, upper = 10)
+
+phim1_seq <- seq(0, 5, length.out = 1000)
+#plot(phim1_seq, dpMOM_phi(phim1_seq, tau = tau_set_1$minimum, sigma2 = 1), lwd = 3, type = "l", xlab = "1/phi", ylab = "pi(1/phi)", main = "NLP 1/phi - state 1")
+plot(phim1_seq, dpeMOM_phi(phim1_seq, tau = tau_set_1$minimum, sigma2 = 1), lwd = 3, type = "l", xlab = "1/phi", ylab = "pi(1/phi)", main = "NLP 1/phi - state 1")
+abline(v = rhom1_lower_1, lwd = 3, lty = 2, col = "red")
+abline(v = rhom1_upper_1, lwd = 3, lty = 2, col = "red")
+
+## State 2
+
+p_2 <- apply(VARHMM_l1ball_params$gamma, c(2, 3), mean)[2, 2]
+
+TVD_NegBinom_Geom_HMM_fit2 <- rep(NA, 100)
+for(i in 1:100){
+  TVD_NegBinom_Geom_HMM_fit2[i] <- TVD_NegBinom_Geom_rhom1(p = p_2, rhom1 = rhom1_seq[i], x_thresh = 1000)
+}
+
+rhom1_lower_2 <- rhom1_seq[which.min(abs(TVD_NegBinom_Geom_HMM_fit2[1:ind_of_1] - 0.1))]
+rhom1_upper_2 <- rhom1_seq[(ind_of_1 - 1) + which.min(abs(TVD_NegBinom_Geom_HMM_fit2[ind_of_1:100] - 0.1))]
+
+plot(rhom1_seq, TVD_NegBinom_Geom_HMM_fit2, xlab = "1/rho", ylab = "Geom - NB TVD State 2", type = "l", lwd = 3)
+abline(v = rhom1_lower_2, lwd = 3, lty = 2, col = "red")
+abline(v = rhom1_upper_2, lwd = 3, lty = 2, col = "red")
+abline(h = 0.1, lwd = 1, col = "grey")
+
+#tau_set_2 <- optimise(f = function(tau){abs(integrate(f = function(phi){dpMOM_phi(phi, tau, sigma2 = 1)}, lower = rhom1_lower_2, upper = rhom1_upper_2)$value - 0.01)}, lower = 0.01, upper = 10)
+tau_set_2 <- optimise(f = function(tau){abs(integrate(f = function(phi){dpeMOM_phi(phi, tau, sigma2 = 1)}, lower = rhom1_lower_2, upper = rhom1_upper_2)$value - 0.01)}, lower = 0.01, upper = 10)
+
+phim1_seq <- seq(0, 5, length.out = 1000)
+#plot(phim1_seq, dpMOM_phi(phim1_seq, tau = tau_set_2$minimum, sigma2 = 1), lwd = 3, type = "l", xlab = "1/phi", ylab = "pi(1/phi)", main = "NLP 1/phi - state 2")
+plot(phim1_seq, dpeMOM_phi(phim1_seq, tau = tau_set_2$minimum, sigma2 = 1), lwd = 3, type = "l", xlab = "1/phi", ylab = "pi(1/phi)", main = "NLP 1/phi - state 2")
+abline(v = rhom1_lower_2, lwd = 3, lty = 2, col = "red")
+abline(v = rhom1_upper_2, lwd = 3, lty = 2, col = "red")
+
+```
+
+```{r NLP_prior, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+tau_set_1
+
+tau_set_2
+
+```
+
+## Prior Specification
+
+```{r NBapproxVARHSMM_NLP_prior_specification, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+a_0 <- c(a_01, a_02)
+b_0 <- c(b_01, b_02)
+
+alpha_0 <- matrix(c(alpha_1[2], alpha_2[c(1)]), nrow = 2, ncol = 1, byrow = TRUE)
+
+tau_phi <- c(tau_set_1$minimum, tau_set_2$minimum) 
+sigma2_phi <- c(1, 1)
+
+```
+
+## MCMC
+
+```{r NBapproxVARHSMM_l1ball_NLP_fit, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+# data
+NBapproxVARHSMM_l1ball_NLP_data <- list(N = N, D = D, K = K, 
+                   P = P, y = obs, 
+                   m = m,
+                   beta_0_loc = matrix(0, K, D), 
+                   beta_0_scale = lambda_beta_set, 
+                   beta_loc = 0, beta_scale = lambda_beta_set,
+                   tau_loc = tau_loc, tau_scale = tau_scale, 
+                   Omega_shape = Omega_shape,
+                   r_alpha = alpha_r_set,
+                   a_0_lambda = a_0, 
+                   b_0_lambda = b_0, 
+                   tau_phi = tau_phi, 
+                   sigma2_phi = sigma2_phi, 
+                   alpha_0 = matrix(1, nrow = K, ncol = (K-1)))
+
+
+NBapproxVARHSMM_NLP_init <- list(
+  gamma = matrix(c(1), nrow = 2, ncol = 1, byrow = TRUE),
+  tilde_p = colMeans(NBapproxVARHSMM_l1ball_params$tilde_p),
+  tilde_phim1 = colMeans(NBapproxVARHSMM_l1ball_params$tilde_phim1),
+  beta_0 = apply(NBapproxVARHSMM_l1ball_params$beta_0, c(2, 3), mean),
+  tilde_beta = apply(NBapproxVARHSMM_l1ball_params$tilde_beta, c(2, 3), mean),
+  tau = apply(NBapproxVARHSMM_l1ball_params$tau, c(2, 3), mean),
+  L_Omega = apply(NBapproxVARHSMM_l1ball_params$L_Omega, c(2, 3, 4), mean),
+  tilde_ray = colMeans(NBapproxVARHSMM_l1ball_params$tilde_ray)
+  )
+
+# fit 
+#NBapproxVARHSMM_l1ball_NLP_fit <- sampling(object = NBapproxVARHSMM_l1ball_NLP_stan,
+NBapproxVARHSMM_l1ball_NLP_fit <- sampling(object = NBapproxVARHSMM_sparse_l1ball_NLP_stan,
+                       data = NBapproxVARHSMM_l1ball_NLP_data, seed = 123,
+                       init = list(c1 = NBapproxVARHSMM_NLP_init),
+                       chains = 1, iter = warmup + N_MCMC, 
+                       warmup = warmup)
+
+
+NBapproxVARHSMM_l1ball_NLP_params <- rstan::extract(NBapproxVARHSMM_l1ball_NLP_fit)
+
+get_elapsed_time(NBapproxVARHSMM_l1ball_NLP_fit)
+
+NBapproxVARHSMM_l1ball_NLP_bridge <- bridge_sampler(NBapproxVARHSMM_l1ball_NLP_fit, silent = TRUE,  repetitions = 10)
+```
+
+saving to RData
+
+```{r NBapproxVARHSMM_l1ball_NLP_fit_save, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+save(NBapproxVARHSMM_l1ball_NLP_fit, NBapproxVARHSMM_l1ball_NLP_bridge, file = "NBapproxVARHSMM_l1ball_NLP_fit_Ex2.RData")
+
+
+```
+
+## Computational Time 
+
+```{r NBapproxVARHSMM_l1ball_NLP_comptime, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+get_elapsed_time(NBapproxVARHSMM_l1ball_NLP_fit)
+cat("total: ", sum(get_elapsed_time(NBapproxVARHSMM_l1ball_NLP_fit)))
+```
+
+
+## Chain Diag
+
+```{r NBapproxVARHSMM_l1ball_NLP_diag, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+fit_NLP_summary <- summary(NBapproxVARHSMM_l1ball_NLP_fit)
+
+mean(fit_NLP_summary$summary[1:(4 + 4*D + 4*D^2 + 2 + 2),9], na.rm = TRUE)
+
+traceplot(NBapproxVARHSMM_l1ball_NLP_fit, pars = c("ray[1]", "ray[2]", "lp__", "tilde_phim1[1]", "tilde_phim1[2]"))
+
+max(NBapproxVARHSMM_l1ball_NLP_params$lp__)
+
+cbind(fit_summary$summary[,3], fit_summary$summary[,9], fit_NLP_summary$summary[,3], fit_NLP_summary$summary[,9])
+
+
+```
+
+## Posterior Predictive 
+
+```{r NBapprox_VAR_HSMM_l1ball_NLP_posterior_predictive_rn, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+
+NBapprox_VAR_HSMM_NLP_predictive <- NBapproxVARHSMM_getPredictive(NBapproxVARHSMM_l1ball_NLP_fit , m, obs, 
+                                                  pseudo = FALSE, 
+                                                  L1_ball = TRUE, ndraw = 100)
+
+
+```
+
+```{r NBapprox_VAR_HSMM_l1ball_NLP_posterior_predictive, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+p_hat <- NBapprox_VAR_HSMM_NLP_predictive$log_pred_density
+z_hat <- NBapprox_VAR_HSMM_NLP_predictive$z_hat
+y_hat <- NBapprox_VAR_HSMM_NLP_predictive$y_hat
+
+# plot posterior predictive
+K <- dim(rstan::extract(NBapproxVARHSMM_l1ball_NLP_fit)$beta_0)[2]
+plotPosteriorPredictive(obs, y_hat, z_hat, K)
+
+Gesture_Phase_plot(Gesture_Phase_sub, only_acc = FALSE, plt_all = FALSE, plt_univ = TRUE)
+
+state_seq[1:20]
+z_hat[1:20]
+true_state_order <- c(1, 2)
+estimated_state_order_HSMM_NLP <- c(1, 2)
+state_correspondence <- true_state_order[estimated_state_order_HSMM_NLP]
+
+state_seq[1:20]
+state_correspondence[z_hat[1:20]]
+
+NBapproxVARHSMM_l1ball_NLP_state_errors <- sum(abs(state_seq != state_correspondence[z_hat]))
+NBapproxVARHSMM_l1ball_NLP_state_errors
+
+NBapproxVARHSMM_l1ball_state_errors
+VARHMM_l1ball_state_errors
+
+NBapproxVARHSMM_l1ball_NLP_state_errors/N
+
+NBapproxVARHSMM_l1ball_NLP_llh <- sum(p_hat)
+NBapproxVARHSMM_l1ball_NLP_llh
+
+NBapproxVARHSMM_l1ball_llh
+VARHMM_l1ball_llh
+
+```
+
+## Confusion Matrix + Measure of Accuracy (TRAINING)
+
+
+```{r NBapproxVARHSMM_l1ball_NLP_stateaccuracy_train, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+switch_z_hat = FALSE
+if (switch_z_hat) 
+{
+  state_seq_est = switch_states(z_hat)
+} else {
+  state_seq_est = z_hat
+}
+
+conf_mat <- confusionMatrix(data=factor(state_seq_est),
+								               	reference = factor(state_seq))
+TP = conf_mat$table[1, 1]
+FP = conf_mat$table[1, 2]
+FN = conf_mat$table[2, 1]
+TN = conf_mat$table[2, 2]
+
+# classification performance
+acc = (TP + TN)/ (TP + TN + FN + FP)
+sens = TP/(TP+FN)# (also called recall)
+spec = TN/(TN+FP)
+F1 = TP/(TP + 0.5*(FP + FN))
+MCC = (TP*TN - FP*FN)/(sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN)))
+
+cat("acc:", acc, "\n")
+cat("sens:", sens, "\n")
+cat("spec :", spec, "\n")
+cat("F1:", F1, "\n")
+cat("MCC:", MCC, "\n")
+
+```
+
+## State Probabilities
+
+```{r NBapproxVARHSMM_l1ball_NLP_state_probabilities, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+par(mfrow = c(2, 1))
+Gesture_Phase_plot(Gesture_Phase, only_acc = FALSE, plt_all = TRUE, plt_univ = FALSE)
+NBapproxVARHSMM_plotStateProbs(NBapproxVARHSMM_l1ball_NLP_fit, obs, m = m, pseudo = FALSE, L1_ball = TRUE)
+
+NBapproxVARHSMM_NLP_plotStateProbs_state_probs <- NBapproxVARHSMM_stateProbs(NBapproxVARHSMM_l1ball_NLP_params, obs, m = m, pseudo = FALSE, L1_ball = TRUE)
+
+
+```
+
+## Breir Score Selection
+
+```{r NBapproxVARHSMM_l1ball_NLP_state_probabilities_BreirScore, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+m_temp <- c(0, cumsum(m))
+
+NBapproxVARHSMM_l1ball_NLP_breir_score <- sum((colSums(NBapproxVARHSMM_NLP_plotStateProbs_state_probs[(m_temp[estimated_state_order_HSMM_NLP[1]] + 1):m_temp[estimated_state_order_HSMM_NLP[1]+1],]) - (state_seq == 1))^2)/(N)
+
+NBapproxVARHSMM_l1ball_NLP_breir_score
+```
+
+
+## VAR coefficients
+
+```{r NBapproxVARHSMM_l1ball_NLP_VAR, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+
+#posterior estimate beta (projected)
+beta_est_NBapproxVARHSMM_NLP <- get_beta_est(NBapproxVARHSMM_l1ball_NLP_params, L1_ball = TRUE, mat = TRUE)
+
+
+
+plot.heat(Matrix = beta_est_NBapproxVARHSMM_NLP[estimated_state_order_HSMM_NLP[1],,,1], Xlab="", Ylab="", Main="Estimated theta - HSMM NLP", limit=c(-1,1))
+plot.heat(Matrix = beta_est_NBapproxVARHSMM[estimated_state_order_HSMM[1],,,1], Xlab="", Ylab="", Main="Estimated theta - HSMM", limit=c(-1,1))
+plot.heat(Matrix = beta_est[estimated_state_order_HMM[1],,,1], Xlab="", Ylab="", Main="Estimated theta - HMM", limit=c(-1,1))
+
+plot.heat(Matrix = beta_est_NBapproxVARHSMM_NLP[estimated_state_order_HSMM_NLP[2],,,1], Xlab="", Ylab="", Main="Estimated theta - HSMM NLP", limit=c(-1,1))
+plot.heat(Matrix = beta_est_NBapproxVARHSMM[estimated_state_order_HSMM[2],,,1], Xlab="", Ylab="", Main="Estimated theta - HSMM", limit=c(-1,1))
+plot.heat(Matrix = beta_est[estimated_state_order_HMM[2],,,1], Xlab="", Ylab="", Main="Estimated theta - HMM", limit=c(-1,1))
+
+
+```
+
+## Inclusion Probabilities
+
+```{r NBapproxVARHSMM_l1ball_NLP_p_inclusion, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+# - inclusion probabilities 
+p_est_NBapproxVARHSMM_NLP <- get_inclusion_sims(NBapproxVARHSMM_l1ball_NLP_params, p_est = TRUE)$p_est
+
+
+plot.heat(Matrix = p_est_NBapproxVARHSMM_NLP[estimated_state_order_HSMM_NLP[1], , , 1], Xlab="", Ylab="", Main="Estimated p - HSMM NLP", limit=c(0,1))
+plot.heat(Matrix = p_est_NBapproxVARHSMM[estimated_state_order_HSMM[1], , , 1], Xlab="", Ylab="", Main="Estimated p - HSMM", limit=c(0,1))
+plot.heat(Matrix = p_est[estimated_state_order_HMM[1], , , 1], Xlab="", Ylab="", Main="Estimated p - HMM", limit=c(0,1))
+plot.heat(Matrix = p_est_NBapproxVARHSMM_NLP[estimated_state_order_HSMM_NLP[2], , , 1], Xlab="", Ylab="", Main="Estimated p - HSMM NLP", limit=c(0,1))
+plot.heat(Matrix = p_est_NBapproxVARHSMM[estimated_state_order_HSMM[2], , , 1], Xlab="", Ylab="", Main="Estimated p - HSMM", limit=c(0,1))
+plot.heat(Matrix = p_est[estimated_state_order_HMM[2], , , 1], Xlab="", Ylab="", Main="Estimated p - HMM", limit=c(0,1))
+
+z_hat[1] ## which state is resting
+
+```
+
+## DAG active and rest 
+
+```{r NBapproxVARHSMM_l1ball_NLP_cov_params, include=TRUE,echo=TRUE, eval = FALSE,  cache=FALSE}
+
+ylabels = c("Vel LH", "Vel RH", "Vel LW", "Vel RW",
+            "Acc LH", "Acc RH", "Acc LW", "Acc RW")
+
+# Rest
+plotDAG(p_est_NBapproxVARHSMM_NLP[1, , , 1], ylabels, color = "lightblue1", main = "Rest")
+# Active
+plotDAG(p_est_NBapproxVARHSMM_NLP[2, , , 1], ylabels, color = "lightsalmon", main = "Active")
+
+```
+
+## Covariance Estimation
+
+Plot cov2cors, the standardisation only acted marginally so should leave the correlations in tact
+
+```{r NBapproxVARHSMM_l1ball_NLP_DAG, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+### Sigma 
+# - covariance matricies
+Sigma_est_NBapproxVARHSMM <- list()
+for (k in 1:K) {
+  Sigma.sims <- array(NA, dim = c(N_MCMC, D, D))# where is K in here?
+  for (tt in 1:N_MCMC) {
+    Omega <- NBapproxVARHSMM_l1ball_NLP_params$L_Omega[tt, k, ,] %*% t(NBapproxVARHSMM_l1ball_NLP_params$L_Omega[tt, k, ,])
+    tau <- NBapproxVARHSMM_l1ball_NLP_params$tau[tt, k, ]
+    Sigma.sims[tt, ,] <- quad_form_diag(Omega, tau)
+  }
+  Sigma_est_NBapproxVARHSMM[[k]] <- apply(Sigma.sims, c(2, 3), mean)
+}; Sigma_est_NBapproxVARHSMM; 
+
+plot.heat(Matrix = cov2cor(Sigma_est_NBapproxVARHSMM[[estimated_state_order_HSMM_NLP[1]]]), Xlab="", Ylab="", Main="Estimated Sigma - HSMM", limit=c(-1,1))
+plot.heat(Matrix = cov2cor(Sigma_est[[estimated_state_order_HMM[1]]]), Xlab="", Ylab="", Main="Estimated Sigma - HMM", limit=c(-1,1))
+
+plot.heat(Matrix = cov2cor(Sigma_est_NBapproxVARHSMM[[estimated_state_order_HSMM_NLP[2]]]), Xlab="", Ylab="", Main="Estimated Sigma - HSMM", limit=c(-1,1))
+plot.heat(Matrix = cov2cor(Sigma_est[[estimated_state_order_HMM[2]]]), Xlab="", Ylab="", Main="Estimated Sigma - HMM", limit=c(-1,1))
+
+```
+
+## Time Varying Correlation
+
+```{r NBapproxVARHSMM_l1ball_NLP_timevaryingcorr, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+par(mfrow = c(2, 2),
+    mai = c(0.4, 0.7, 0.2, 0.1))
+
+labels_ts <- c("Vel_LH", "Vel_RH", "Vel_LW", "Vel_RW", 
+               "Acc_LH", "Acc_RH", "Acc_LW", "Acc_RW")
+
+
+dimensions_ALL <- list()
+dimensions_ALL[[1]] <- c(1, 2)
+dimensions_ALL[[2]] <- c(1, 3)
+dimensions_ALL[[3]] <- c(5, 6)
+dimensions_ALL[[4]] <- c(5, 7)
+
+for (ii in 1:4) {
+  dimensions <- dimensions_ALL[[ii]]
+  corr_sims <- NBapproxVARHSMM_getCorrelation(NBapproxVARHSMM_l1ball_NLP_fit, 
+                                              obs, 
+                                              m, 
+                                              dimensions = dimensions, 
+                                              n_draw = 50,
+                                              pseudo = FALSE, 
+                                              L1_ball = TRUE)
+  corr_label <- labels_ts[c(dimensions[1], dimensions[2])]
+  
+  plotPosteriorCorrelation(corr_sims, z_hat, K, corr_label)
+}
+
+```
+
+
+## Dwell Parameters
+
+```{r NBapproxVARHSMM_l1ball_NLP_dwell_parameters, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+colMeans(NBapproxVARHSMM_l1ball_NLP_params$lambda)[estimated_state_order_HSMM_NLP] + 1## these should match with lambda + 1
+colMeans(NBapproxVARHSMM_l1ball_params$lambda)[estimated_state_order_HSMM] + 1
+
+
+mean(1/(1 - VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[1],estimated_state_order_HMM[1]]))
+mean(1/(1 - VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[2],estimated_state_order_HMM[2]]))
+
+mean(VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[1],estimated_state_order_HMM[1]]/(1 - VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[1],estimated_state_order_HMM[1]]))## these should match with lambda
+mean(VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[2],estimated_state_order_HMM[2]]/(1 - VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[2],estimated_state_order_HMM[2]]))
+
+colMeans(1/NBapproxVARHSMM_l1ball_NLP_params$phim1)[estimated_state_order_HSMM_NLP]
+colMeans(1/NBapproxVARHSMM_l1ball_params$phim1)[estimated_state_order_HSMM]
+
+plot(density(NBapproxVARHSMM_l1ball_NLP_params$phim1[,estimated_state_order_HSMM_NLP[1]]), xlab = "phi^{-1}", ylab = "Density", lwd = 3, xlim = c(0, 10))
+lines(density(NBapproxVARHSMM_l1ball_params$phim1[,estimated_state_order_HSMM[1]]), lwd = 3, lty = 2)
+abline(v = 1, lwd = 3, lty = 2, col = "red")
+plot(density(NBapproxVARHSMM_l1ball_NLP_params$phim1[,estimated_state_order_HSMM_NLP[2]]), xlab = "phi^{-1}", ylab = "Density", lwd = 3, xlim = c(0, 10))
+lines(density(NBapproxVARHSMM_l1ball_params$phim1[,estimated_state_order_HSMM[2]]), lwd = 3, lty = 2)
+abline(v = 1, lwd = 3, lty = 2, col = "red")
+
+hist(NBapproxVARHSMM_l1ball_NLP_params$phim1[,estimated_state_order_HSMM_NLP[1]], probability = TRUE, xlab = "phi^{-1}", ylab = "Density", xlim = c(0, 10), breaks = 300)
+abline(v = 1, lwd = 3, lty = 2, col = "red")
+hist(NBapproxVARHSMM_l1ball_NLP_params$phim1[,estimated_state_order_HSMM_NLP[2]], probability = TRUE, xlab = "phi^{-1}", ylab = "Density", xlim = c(0, 10), breaks = 300)
+abline(v = 1, lwd = 3, lty = 2, col = "red")
+
+NBapproxVARHSMM_l1ball_NLP_bridge$logml
+NBapproxVARHSMM_l1ball_bridge$logml
+VARHMM_l1ball_bridge$logml
+
+mean(NBapproxVARHSMM_l1ball_NLP_bridge$logml)
+mean(NBapproxVARHSMM_l1ball_bridge$logml)
+mean(VARHMM_l1ball_bridge$logml)
+
+boxplot(cbind(VARHMM_l1ball_bridge$logml, NBapproxVARHSMM_l1ball_bridge$logml, NBapproxVARHSMM_l1ball_NLP_bridge$logml), ylab = "log-ML", xlab = "Model", names = c("HMM", "HSMM", "HSMM-NLP"))
+```
+
+Would be nice to have a plot here to compare the poisson dwell distribution associated with the estimate parameter with the approximation of the poisson dwell distribution associated with that parameter - I had a function to plot the exact dwell distribution right?
+
+## Plotting the dwell distribution 
+
+```{r Dwell_distributions_predictives, include=TRUE,echo=TRUE, eval = TRUE, cache=FALSE}
+NegBinom_dwell_approx <- function(r, lambda, phi, m){
+  return(
+    as.numeric((r <= m))*dnbinom(r-1, mu = lambda, size = phi) + 
+      as.numeric(r > m)*dnbinom(m-1, mu = lambda, size = phi)*(1-c_hazard_NegBinom(m, lambda, phi))^(r-m))
+}
+
+## Predictive
+
+#N_MCMC <- 10000
+N_MCMC <- 5000
+## State 1
+x_seq_1 <- 1:30
+dwell_dgeom_1 <- rep(0, length(x_seq_1))
+dwell_dnbimon_1 <- rep(0, length(x_seq_1))
+dwell_dnbimon_approx_1 <- rep(0, length(x_seq_1))
+for(j in 1:N_MCMC){
+  p_1 <- 1 - VARHMM_l1ball_params$gamma[j, estimated_state_order_HMM[1],estimated_state_order_HMM[1]]
+  dwell_dgeom_1 <- dwell_dgeom_1 + dgeom(x_seq_1 - 1, prob = p_1)
+
+  lambda_1 <- NBapproxVARHSMM_l1ball_NLP_params$lambda[j, estimated_state_order_HSMM[1]]
+  phi_1 <- 1/NBapproxVARHSMM_l1ball_NLP_params$phim1[j, estimated_state_order_HSMM[1]]
+  dwell_dnbimon_1 <- dwell_dnbimon_1 + dnbinom(x_seq_1 - 1, size = phi_1, mu = lambda_1)
+  
+  dwell_dnbimon_approx_1 <- dwell_dnbimon_approx_1 + NegBinom_dwell_approx(x_seq_1, lambda_1, phi_1, m[estimated_state_order_HSMM_NLP[1]])
+  
+}
+
+plot(x_seq_1, dwell_dgeom_1/N_MCMC, type = "l", lwd = 3, xlab = "Dwell time", ylab = "Density", col = "black", main = "")
+points(x_seq_1, dwell_dnbimon_1/N_MCMC , type = "l", lwd = 3, col = "grey")
+points(x_seq_1, dwell_dnbimon_approx_1/N_MCMC , type = "l", lwd = 3, col = "dark grey", lty = 2)
+legend("topright", c("Geometric", "Negative Binomial (EXACT)", "Negative Binomial (APPROX)"), col= c("black", "grey", "dark grey"), lwd = rep(5, 3), lty = c(1, 1, 2), bty = "n", cex = 1.0)
+
+## State 2
+x_seq_2 <- 1:30
+dwell_dgeom_2 <- rep(0, length(x_seq_2))
+dwell_dnbimon_2 <- rep(0, length(x_seq_2))
+dwell_dnbimon_approx_2 <- rep(0, length(x_seq_2))
+for(j in 1:N_MCMC){
+  p_2 <- 1 - VARHMM_l1ball_params$gamma[j, estimated_state_order_HMM[2],estimated_state_order_HMM[2]]
+  dwell_dgeom_2 <- dwell_dgeom_2 + dgeom(x_seq_2 - 1, prob = p_2)
+
+  lambda_2 <- NBapproxVARHSMM_l1ball_NLP_params$lambda[j, estimated_state_order_HSMM[2]]
+  phi_2 <- 1/NBapproxVARHSMM_l1ball_NLP_params$phim1[j, estimated_state_order_HSMM[2]]
+  dwell_dnbimon_2 <- dwell_dnbimon_2 + dnbinom(x_seq_2 - 1, size = phi_2, mu = lambda_2)
+  
+  dwell_dnbimon_approx_2 <- dwell_dnbimon_approx_2 + NegBinom_dwell_approx(x_seq_2, lambda_2, phi_2, m[estimated_state_order_HSMM_NLP[2]])
+  
+}
+
+plot(x_seq_2, dwell_dgeom_2/N_MCMC, type = "l", lwd = 3, xlab = "Dwell time", ylab = "Density", col = "black", main = "")
+points(x_seq_2, dwell_dnbimon_2/N_MCMC , type = "l", lwd = 3, col = "grey")
+points(x_seq_2, dwell_dnbimon_approx_2/N_MCMC , type = "l", lwd = 3, col = "dark grey", lty = 2)
+legend("topright", c("Geometric", "Negative Binomial (EXACT)", "Negative Binomial (APPROX)"), col= c("black", "grey", "dark grey"), lwd = rep(5, 3), lty = c(1, 1, 2), bty = "n", cex = 1.0)
+
+
+```
+
+```{r GesturePhase_Dwell_distributions_predictives_tikz, include=TRUE,echo=TRUE, eval = TRUE, cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+
+par(mar = c(3.1, 3.3, 1.5, 1.1))  # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+## Predictive
+
+## State 1
+
+plot(x_seq_1, dwell_dgeom_1/N_MCMC, type = "l", lwd = 3, xlab = "Resting dwell time", ylab = "Density", col = "black", main = "")
+points(x_seq_1, dwell_dnbimon_1/N_MCMC , type = "l", lwd = 3, col = "grey")
+points(x_seq_1, dwell_dnbimon_approx_1/N_MCMC , type = "l", lwd = 3, col = "dark grey", lty = 2)
+legend("topright", c("Geometric", "Negative Binomial (EXACT)", "Negative Binomial (APPROX)"), col= c("black", "grey", "dark grey"), lwd = rep(5, 3), lty = c(1, 1, 2), bty = "n", cex = 1.25)
+
+## State 2
+
+plot(x_seq_2, dwell_dgeom_2/N_MCMC, type = "l", lwd = 3, xlab = "Active dwell time", ylab = "Density", col = "black", main = "")
+points(x_seq_2, dwell_dnbimon_2/N_MCMC , type = "l", lwd = 3, col = "grey")
+points(x_seq_2, dwell_dnbimon_approx_2/N_MCMC , type = "l", lwd = 3, col = "dark grey", lty = 2)
+#legend("topright", c("Geometric", "Negative Binomial (EXACT)", "Negative Binomial (APPROX)"), col= c("black", "grey", "dark grey"), lwd = rep(5, 3), lty = c(1, 1, 2), bty = "n", cex = 1.25)
+
+```
+
+## Posterior Predictive + Most likeliy state sequence (TEST)
+
+```{r NBapproxVARHSMM_l1ball_NLP_dwell_TESTDATA_pred_rn, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+NBapprox_VAR_HSMM_NLP_predictive_test <- NBapproxVARHSMM_getPredictive(NBapproxVARHSMM_l1ball_NLP_fit,
+                                                                   m, obs_test, 
+                                                                   pseudo = FALSE, 
+                                                                   L1_ball = TRUE, ndraw = 100)
+
+
+
+```
+
+```{r NBapproxVARHSMM_l1ball_NLP_dwell_TESTDATA_pred, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+p_hat_test <- NBapprox_VAR_HSMM_NLP_predictive_test$log_pred_density
+z_hat_test <- NBapprox_VAR_HSMM_NLP_predictive_test$z_hat
+y_hat_test <- NBapprox_VAR_HSMM_NLP_predictive_test$y_hat
+
+K <- dim(rstan::extract(NBapproxVARHSMM_l1ball_NLP_fit)$beta_0)[2]
+plotPosteriorPredictive(obs_test, y_hat_test, z_hat_test, K)
+
+NBapproxVARHSMM_l1ball_NLP_state_errors_test <- sum(abs(state_seq_test != state_correspondence[z_hat_test]))
+NBapproxVARHSMM_l1ball_NLP_state_errors_test
+
+NBapproxVARHSMM_l1ball_NLP_llh_test <- sum(p_hat_test)
+NBapproxVARHSMM_l1ball_NLP_llh_test
+
+NBapproxVARHSMM_l1ball_llh_test
+VARHMM_l1ball_llh_test
+
+```
+
+
+## Confusion Matrix + Measure of Accuracy (TEST)
+
+
+```{r NBapproxVARHSMM_l1ball_NLP_stateaccuracy_test, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+switch_z_hat = FALSE
+if (switch_z_hat) 
+{
+  state_seq_est = switch_states(z_hat_test)
+} else {
+  state_seq_est = z_hat_test
+}
+
+conf_mat <- confusionMatrix(data=factor(state_seq_est),
+								               	reference = factor(state_seq_test))
+TP = conf_mat$table[1, 1]
+FP = conf_mat$table[1, 2]
+FN = conf_mat$table[2, 1]
+TN = conf_mat$table[2, 2]
+
+# classification performance
+acc = (TP + TN)/ (TP + TN + FN + FP)
+sens = TP/(TP+FN)# (also called recall)
+spec = TN/(TN+FP)
+F1 = TP/(TP + 0.5*(FP + FN))
+MCC = (TP*TN - FP*FN)/(sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN)))
+
+cat("acc:", acc, "\n")
+cat("sens:", sens, "\n")
+cat("spec :", spec, "\n")
+cat("F1:", F1, "\n")
+cat("MCC:", MCC, "\n")
+
+```
+
+## State probs plot + Data (TEST)
+
+```{r NBapproxVARHSMM_l1ball_NLP_dwell_TESTDATA_stateprobs, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+Gesture_Phase_plot(Gesture_Phase_test, only_acc = TRUE, plt_all = TRUE, plt_univ = TRUE)
+#Gesture_Phase_plot(Gesture_Phase_sub_test, only_acc = TRUE, plt_all = TRUE, plt_univ = FALSE)
+dev.off()
+NBapproxVARHSMM_plotStateProbs(NBapproxVARHSMM_l1ball_NLP_fit, obs_test, m = m, 
+                               pseudo = FALSE, L1_ball = TRUE)
+
+NBapproxVARHSMM_NLP_plotStateProbs_state_probs_test <- NBapproxVARHSMM_stateProbs(NBapproxVARHSMM_l1ball_NLP_params, obs_test, m = m, pseudo = FALSE, L1_ball = TRUE)
+```
+
+
+
+
+
+
+# VAR-HSMM Negative Binomial - NLP - no $l_1$-ball {.tabset}
+
+To see how the $l_1$-ball improves the state estimation 
+
+## Model settings
+
+```{r NBapproxVARHSMM_nol1_NLP_model_settings, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+N_MCMC <- 5000
+warmup <- 1000
+K <- 2
+P <- 1
+
+m <- c(15, 15)
+
+```
+
+## Prior Specification
+
+```{r NBapproxVARHSMM_nol1_NLP_prior_specification, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+
+
+a_0 <- c(a_01, a_02)
+b_0 <- c(b_01, b_02)
+
+alpha_0 <- matrix(c(alpha_1[2], alpha_2[c(1)]), nrow = 2, ncol = 1, byrow = TRUE)
+
+tau_phi <- c(tau_set_1$minimum, tau_set_2$minimum) 
+sigma2_phi <- c(1, 1)
+
+```
+
+## VAR Coefficients (no l1-ball)
+
+```{r prior_specification_beta_sparsity_nol1, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+prob_stable <- 0.95
+N_MC <- 5000
+
+P <- 1
+
+## Setting lamabda ##
+
+lambda_vec <- seq(0.01, 0.3, length.out = 20)
+non_sparse_VAR_DExp_stability_prob_eval <- rep(NA, 20)
+
+for(j in 1:20){
+  non_sparse_VAR_DExp_stability_prob_eval[j] <- mean(non_sparse_VAR_DExp_stability_prob(N_MC, D, P, lambda = lambda_vec[j])  == 1)
+  cat("lambda", j, "done", "\n")
+}
+
+lambda_beta_set_non_sparse <- lambda_vec[which.min(abs(non_sparse_VAR_DExp_stability_prob_eval - prob_stable))]
+
+
+```
+
+Is there any kind of identifiability issue between the beta's and the Sigma's. Could consider Omega_shape > 1
+
+## MCMC
+
+```{r NBapproxVARHSMM_NLP_fit, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+# data
+NBapproxVARHSMM_NLP_data <- list(N = N, D = D, K = K, 
+                   P = P, y = obs, 
+                   m = m,
+                   beta_0_loc = matrix(0, K, D), 
+                   beta_0_scale = lambda_beta_set_non_sparse, 
+                   beta_loc = 0, beta_scale = lambda_beta_set_non_sparse,
+                   tau_loc = tau_loc, tau_scale = tau_scale, 
+                   Omega_shape = Omega_shape,
+                   a_0_lambda = a_0, 
+                   b_0_lambda = b_0, 
+                   tau_phi = tau_phi, 
+                   sigma2_phi = sigma2_phi, 
+                   alpha_0 = matrix(1, nrow = K, ncol = (K-1)))
+
+
+beta_init <- matrix(NA, nrow = K, ncol = D*D*P)
+for(k in 1:K){
+  beta_init[k,] <- l1_ball_projection(apply(NBapproxVARHSMM_l1ball_params$beta[,k,], c(2), mean), mean(NBapproxVARHSMM_l1ball_params$ray[,k]))
+}
+
+NBapproxVARHSMM_NLP_nol1_init <- list(
+  gamma = matrix(c(1), nrow = 2, ncol = 1, byrow = TRUE),
+  tilde_p = colMeans(NBapproxVARHSMM_l1ball_params$tilde_p),
+  tilde_phim1 = colMeans(NBapproxVARHSMM_l1ball_params$tilde_phim1),
+  beta_0 = apply(NBapproxVARHSMM_l1ball_params$beta_0, c(2, 3), mean),
+  beta = beta_init,
+  tau = apply(NBapproxVARHSMM_l1ball_params$tau, c(2, 3), mean),
+  L_Omega = apply(NBapproxVARHSMM_l1ball_params$L_Omega, c(2, 3, 4), mean)
+  )
+
+# fit 
+#NBapproxVARHSMM_NLP_fit <- sampling(object = NBapproxVARHSMM_NLP_stan,
+NBapproxVARHSMM_NLP_fit <- sampling(object = NBapproxVARHSMM_sparse_NLP_stan,
+                       data = NBapproxVARHSMM_NLP_data, seed = 123, 
+                       chains = 1, iter = warmup + N_MCMC, 
+                       init = list(c1 = NBapproxVARHSMM_NLP_nol1_init),
+                       warmup = warmup)
+
+
+NBapproxVARHSMM_NLP_params <- rstan::extract(NBapproxVARHSMM_NLP_fit)
+
+get_elapsed_time(NBapproxVARHSMM_NLP_fit)
+
+NBapproxVARHSMM_NLP_bridge <- bridge_sampler(NBapproxVARHSMM_NLP_fit, silent = TRUE,  repetitions = 10)
+```
+
+saving to RData
+
+```{r NBapproxVARHSMM_NLP_fit_save, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+save(NBapproxVARHSMM_NLP_fit, NBapproxVARHSMM_NLP_bridge, file = "NBapproxVARHSMM_NLP_fit_Ex2.RData")
+
+```
+
+## Computational Time 
+
+```{r NBapproxVARHSMM_NLP__comptime, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+get_elapsed_time(NBapproxVARHSMM_NLP_fit)
+cat("total: ", sum(get_elapsed_time(NBapproxVARHSMM_NLP_fit)))
+```
+
+## Chain Diag
+
+```{r NBapproxVARHSMM_NLP_diag, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+mean(fit_summary$summary[1:(4 + 4*D + 4*D^2 + 2),9], na.rm = TRUE)
+min(fit_summary$summary[1:(4 + 4*D + 4*D^2 + 2),9], na.rm = TRUE)
+
+traceplot(NBapproxVARHSMM_NLP_fit, pars = c("lp__", "tilde_phim1[1]", "tilde_phim1[2]"))
+
+fit_summary <- summary(NBapproxVARHSMM_NLP_fit)
+cbind(fit_summary$summary[,3], fit_summary$summary[,9])
+
+
+```
+
+## Posterior Predictive 
+
+```{r NBapprox_VAR_HSMM_NLP_posterior_predictive_rn, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+
+NBapprox_VAR_HSMM_NLP_nol1_predictive <- NBapproxVARHSMM_getPredictive(NBapproxVARHSMM_NLP_fit , m, obs, 
+                                                  pseudo = FALSE, 
+                                                  L1_ball = FALSE, ndraw = 100)
+
+
+
+```
+
+
+```{r NBapprox_VAR_HSMM_NLP_posterior_predictive, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+p_hat <- NBapprox_VAR_HSMM_NLP_nol1_predictive$log_pred_density
+z_hat <- NBapprox_VAR_HSMM_NLP_nol1_predictive$z_hat
+y_hat <- NBapprox_VAR_HSMM_NLP_nol1_predictive$y_hat
+
+# plot posterior predictive
+K <- dim(rstan::extract(NBapproxVARHSMM_NLP_fit)$beta_0)[2]
+plotPosteriorPredictive(obs, y_hat, z_hat, K)
+
+Gesture_Phase_plot(Gesture_Phase_sub, only_acc = FALSE, plt_all = FALSE, plt_univ = TRUE)
+
+state_seq[1:20]
+z_hat[1:20]
+true_state_order <- c(1, 2)
+estimated_state_order_HSMM_NLP_nol1 <- c(1, 2)
+state_correspondence <- true_state_order[estimated_state_order_HSMM_NLP_nol1]
+
+state_seq[1:20]
+state_correspondence[z_hat[1:20]]
+
+NBapproxVARHSMM_NLP_state_errors <- sum(abs(state_seq != state_correspondence[z_hat]))
+NBapproxVARHSMM_NLP_state_errors
+
+NBapproxVARHSMM_NLP_state_errors/N
+
+NBapproxVARHSMM_NLP_llh <- sum(p_hat)
+NBapproxVARHSMM_NLP_llh
+
+```
+
+## Confusion Matrix + Measure of Accuracy (TRAINING)
+
+```{r NBapprox_VAR_HSMM_NLP_stateaccuracy_train, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+switch_z_hat = FALSE
+if (switch_z_hat) 
+{
+  state_seq_est = switch_states(z_hat)
+} else {
+  state_seq_est = z_hat
+}
+
+conf_mat <- confusionMatrix(data=factor(state_seq_est),
+								               	reference = factor(state_seq))
+TP = conf_mat$table[1, 1]
+FP = conf_mat$table[1, 2]
+FN = conf_mat$table[2, 1]
+TN = conf_mat$table[2, 2]
+
+# classification performance
+acc = (TP + TN)/ (TP + TN + FN + FP)
+sens = TP/(TP+FN)# (also called recall)
+spec = TN/(TN+FP)
+F1 = TP/(TP + 0.5*(FP + FN))
+MCC = (TP*TN - FP*FN)/(sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN)))
+
+cat("acc:", acc, "\n")
+cat("sens:", sens, "\n")
+cat("spec :", spec, "\n")
+cat("F1:", F1, "\n")
+cat("MCC:", MCC, "\n")
+
+```
+
+
+## State Probabilities
+
+```{r NBapproxVARHSMM_NLP_state_probabilities, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+par(mfrow = c(2, 1))
+Gesture_Phase_plot(Gesture_Phase, only_acc = FALSE, plt_all = TRUE, plt_univ = FALSE)
+NBapproxVARHSMM_plotStateProbs(NBapproxVARHSMM_NLP_fit, obs, m = m, pseudo = FALSE, L1_ball = FALSE)
+
+NBapproxVARHSMM_NLP_plotStateProbs_state_probs <- NBapproxVARHSMM_stateProbs(NBapproxVARHSMM_NLP_params, obs, m = m, pseudo = FALSE, L1_ball = FALSE)
+
+
+```
+
+## Breir Score Selection
+
+```{r NBapproxVARHSMM_NLP_state_probabilities_BreirScore, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+m_temp <- c(0, cumsum(m))
+
+NBapproxVARHSMM_NLP_breir_score <- sum((colSums(NBapproxVARHSMM_NLP_plotStateProbs_state_probs[(m_temp[estimated_state_order_HSMM_NLP_nol1[1]] + 1):m_temp[estimated_state_order_HSMM_NLP_nol1[1]+1],]) - (state_seq == 1))^2)/(N)
+
+NBapproxVARHSMM_NLP_breir_score
+```
+
+## VAR coefficients
+
+```{r NBapproxVARHSMM_NLP_VAR, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+
+# posterior estimate beta (projected)
+beta_est_NBapproxVARHSMM_NLP_nol1 <- get_beta_est(NBapproxVARHSMM_NLP_params, L1_ball = FALSE, mat = TRUE)
+
+
+plot.heat(Matrix = beta_est_NBapproxVARHSMM_NLP_nol1[estimated_state_order_HSMM_NLP_nol1[1],,,1], Xlab="", Ylab="", Main="Estimated theta - HSMM NLP nol1", limit=c(-1,1))
+plot.heat(Matrix = beta_est_NBapproxVARHSMM_NLP[estimated_state_order_HSMM_NLP[1],,,1], Xlab="", Ylab="", Main="Estimated theta - HSMM NLP", limit=c(-1,1))
+
+plot.heat(Matrix = beta_est_NBapproxVARHSMM_NLP_nol1[estimated_state_order_HSMM_NLP_nol1[2],,,1], Xlab="", Ylab="", Main="Estimated theta - HSMM NLP nol1", limit=c(-1,1))
+plot.heat(Matrix = beta_est_NBapproxVARHSMM_NLP[estimated_state_order_HSMM_NLP[2],,,1], Xlab="", Ylab="", Main="Estimated theta - HSMM NLP nol1", limit=c(-1,1))
+
+
+
+```
+
+
+## Covariance Estimation
+
+Plot cov2cors, the standardisation only acted marginally so should leave the correlations in tact
+
+```{r NBapproxVARHSMM_NLP_cov_params, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+### Sigma 
+# - covariance matricies
+Sigma_est_NBapproxVARHSMM <- list()
+for (k in 1:K) {
+  Sigma.sims <- array(NA, dim = c(N_MCMC, D, D))# where is K in here?
+  for (tt in 1:N_MCMC) {
+    Omega <- NBapproxVARHSMM_NLP_params$L_Omega[tt, k, ,] %*% t(NBapproxVARHSMM_NLP_params$L_Omega[tt, k, ,])
+    tau <- NBapproxVARHSMM_NLP_params$tau[tt, k, ]
+    Sigma.sims[tt, ,] <- quad_form_diag(Omega, tau)
+  }
+  Sigma_est_NBapproxVARHSMM[[k]] <- apply(Sigma.sims, c(2, 3), mean)
+}; Sigma_est_NBapproxVARHSMM; 
+
+plot.heat(Matrix = cov2cor(Sigma_est_NBapproxVARHSMM[[estimated_state_order_HSMM_NLP_nol1[1]]]), Xlab="", Ylab="", Main="Estimated Sigma - HSMM", limit=c(-1,1))
+plot.heat(Matrix = cov2cor(Sigma_est[[estimated_state_order_HMM[1]]]), Xlab="", Ylab="", Main="Estimated Sigma - HMM", limit=c(-1,1))
+
+plot.heat(Matrix = cov2cor(Sigma_est_NBapproxVARHSMM[[estimated_state_order_HSMM_NLP_nol1[2]]]), Xlab="", Ylab="", Main="Estimated Sigma - HSMM", limit=c(-1,1))
+plot.heat(Matrix = cov2cor(Sigma_est[[estimated_state_order_HMM[2]]]), Xlab="", Ylab="", Main="Estimated Sigma - HMM", limit=c(-1,1))
+
+```
+
+## Dwell Parameters
+
+```{r NBapproxVARHSMM_NLP_dwell_parameters, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+colMeans(NBapproxVARHSMM_NLP_params$lambda)[estimated_state_order_HSMM_NLP_nol1]
+colMeans(NBapproxVARHSMM_l1ball_NLP_params$lambda)[estimated_state_order_HSMM_NLP]
+colMeans(NBapproxVARHSMM_l1ball_params$lambda)[estimated_state_order_HSMM]
+
+mean(1/(1 - VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[1],estimated_state_order_HMM[1]]))
+mean(1/(1 - VARHMM_l1ball_params$gamma[,estimated_state_order_HMM[2],estimated_state_order_HMM[2]]))
+
+colMeans(1/NBapproxVARHSMM_NLP_params$phim1)[estimated_state_order_HMM]
+colMeans(1/NBapproxVARHSMM_l1ball_NLP_params$phim1)[estimated_state_order_HSMM_NLP]
+colMeans(1/NBapproxVARHSMM_l1ball_params$phim1)[estimated_state_order_HSMM]
+
+NBapproxVARHSMM_NLP_bridge$logml
+NBapproxVARHSMM_l1ball_NLP_bridge$logml
+NBapproxVARHSMM_l1ball_bridge$logml
+VARHMM_l1ball_bridge$logml
+
+mean(NBapproxVARHSMM_NLP_bridge$logml)
+mean(NBapproxVARHSMM_l1ball_NLP_bridge$logml)
+mean(NBapproxVARHSMM_l1ball_bridge$logml)
+mean(VARHMM_l1ball_bridge$logml)
+
+boxplot(cbind(VARHMM_l1ball_bridge$logml, NBapproxVARHSMM_l1ball_bridge$logml, NBapproxVARHSMM_l1ball_NLP_bridge$logml, NBapproxVARHSMM_NLP_bridge$logml), ylab = "log-ML", xlab = "Model", names = c("HMM", "HSMM", "HSMM-NLP", "HSMM-NLP_nol1"))
+
+```
+
+## Posterior Predictive + Most likeliy state sequence (TEST)
+
+```{r NBapproxVARHSMM_NLP_dwell_TESTDATA_pred_rn, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+
+NBapprox_VAR_HSMM_NLP_nol1_predictive_test <- NBapproxVARHSMM_getPredictive(NBapproxVARHSMM_NLP_fit,
+                                                                   m, obs_test, 
+                                                                   pseudo = FALSE, 
+                                                                   L1_ball = FALSE, ndraw = 100)
+
+
+
+```
+
+
+
+```{r NBapproxVARHSMM_NLP_dwell_TESTDATA_pred, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+
+p_hat_test <- NBapprox_VAR_HSMM_NLP_nol1_predictive_test$log_pred_density
+z_hat_test <- NBapprox_VAR_HSMM_NLP_nol1_predictive_test$z_hat
+y_hat_test <- NBapprox_VAR_HSMM_NLP_nol1_predictive_test$y_hat
+
+K <- dim(rstan::extract(NBapproxVARHSMM_NLP_fit)$beta_0)[2]
+plotPosteriorPredictive(obs_test, y_hat_test, z_hat_test, K)
+
+NBapproxVARHSMM_NLP_state_errors_test <- sum(abs(state_seq_test != state_correspondence[z_hat_test]))
+NBapproxVARHSMM_NLP_state_errors_test
+
+NBapproxVARHSMM_NLP_llh_test <- sum(p_hat_test)
+NBapproxVARHSMM_NLP_llh_test
+
+NBapproxVARHSMM_l1ball_NLP_llh_test
+NBapproxVARHSMM_l1ball_llh_test
+VARHMM_l1ball_llh_test
+
+```
+
+## Confusion Matrix + Measure of Accuracy (TEST)
+
+```{r NBapprox_VAR_HSMM_NLP_stateaccuracy_test, include=TRUE,echo=TRUE, eval = TRUE,  cache=FALSE}
+switch_z_hat = FALSE
+if (switch_z_hat) 
+{
+  state_seq_est = switch_states(z_hat_test)
+} else {
+  state_seq_est = z_hat_test
+}
+
+conf_mat <- confusionMatrix(data=factor(state_seq_est),
+								               	reference = factor(state_seq_test))
+TP = conf_mat$table[1, 1]
+FP = conf_mat$table[1, 2]
+FN = conf_mat$table[2, 1]
+TN = conf_mat$table[2, 2]
+
+# classification performance
+acc = (TP + TN)/ (TP + TN + FN + FP)
+sens = TP/(TP+FN)# (also called recall)
+spec = TN/(TN+FP)
+F1 = TP/(TP + 0.5*(FP + FN))
+MCC = (TP*TN - FP*FN)/(sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN)))
+
+cat("acc:", acc, "\n")
+cat("sens:", sens, "\n")
+cat("spec :", spec, "\n")
+cat("F1:", F1, "\n")
+cat("MCC:", MCC, "\n")
+
+```
+
+## State probs plot + Data (TEST)
+
+```{r NBapproxVARHSMM_NLP_dwell_TESTDATA_stateprobs, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+Gesture_Phase_plot(Gesture_Phase_test, only_acc = TRUE, plt_all = TRUE, plt_univ = TRUE)
+#Gesture_Phase_plot(Gesture_Phase_sub_test, only_acc = TRUE, plt_all = TRUE, plt_univ = FALSE)
+dev.off()
+NBapproxVARHSMM_plotStateProbs(NBapproxVARHSMM_NLP_fit, obs_test, m = m, 
+                               pseudo = FALSE, L1_ball = FALSE)
+
+NBapproxVARHSMM_NLP_plotStateProbs_state_probs_test <- NBapproxVARHSMM_stateProbs(NBapproxVARHSMM_l1ball_NLP_params, obs_test, m = m, pseudo = FALSE, L1_ball = FALSE)
+```
+
+
+# Final Comparison 
+
+```{r VAR_HMM_HSMM_l1ball_comparison, include=TRUE,echo=TRUE, eval = TRUE, cache=FALSE}
+
+
+VAR_HMM_HSMM_l1ball_comparison_table <- data.frame("Method" = c("HMM", "HSMM-LP", "HSMM-NLP", "HSMM-NLP-shrinkage"),
+                        "marg-llk" = c(mean(VARHMM_l1ball_bridge$logml), mean(NBapproxVARHSMM_l1ball_bridge$logml), mean(NBapproxVARHSMM_l1ball_NLP_bridge$logml), mean(NBapproxVARHSMM_NLP_bridge$logml)),
+                        "Training State Accuracy" = c(1 - VARHMM_l1ball_state_errors/N, 1 - NBapproxVARHSMM_l1ball_state_errors/N, 1 - NBapproxVARHSMM_l1ball_NLP_state_errors/N, 1 - NBapproxVARHSMM_NLP_state_errors/N),
+                        "Training log-lik" = c(VARHMM_l1ball_llh, NBapproxVARHSMM_l1ball_llh, NBapproxVARHSMM_l1ball_NLP_llh, NBapproxVARHSMM_NLP_llh),
+                        "Testing State Accuracy" = c(1 - VARHMM_l1ball_state_errors_test/N, 1 - NBapproxVARHSMM_l1ball_state_errors_test/N, 1 - NBapproxVARHSMM_l1ball_NLP_state_errors_test/N, 1 - NBapproxVARHSMM_NLP_state_errors_test/N),
+                        "Testing log_lik" = c(VARHMM_l1ball_llh_test, NBapproxVARHSMM_l1ball_llh_test, NBapproxVARHSMM_l1ball_NLP_llh_test, NBapproxVARHSMM_NLP_llh_test)
+                        )
+
+
+                          
+xtable(VAR_HMM_HSMM_l1ball_comparison_table, include.rownames = FALSE, digits = 3)
+
+kable(VAR_HMM_HSMM_l1ball_comparison_table)
+
+
+```
+
